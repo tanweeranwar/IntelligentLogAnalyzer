@@ -12,6 +12,8 @@ public sealed class LogAnalysisResult
 
     public DateTimeOffset? LastTimestamp { get; init; }
 
+    public IncidentIntelligence Intelligence { get; init; } = new();
+
     public IReadOnlyCollection<NormalizedLogEntry> Entries { get; init; } =
         Array.Empty<NormalizedLogEntry>();
 
@@ -30,4 +32,5 @@ public sealed class ErrorSummary
     public int OccurrenceCount { get; init; }
 
     public int? HttpStatusCode { get; init; }
+    public IncidentIntelligence Intelligence { get; init; } = new();
 }

@@ -1,6 +1,7 @@
 using LogAnalyzer.Web.Components;
 using LogAnalyzer.Application.Interfaces;
 using LogAnalyzer.Infrastructure.Parsers;
+using LogAnalyzer.Infrastructure.Intelligence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +10,12 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddScoped<ILogParser, PlainTextLogParser>();
+builder.Services.AddScoped<
+    IIncidentIntelligenceService,
+    IncidentIntelligenceService>();
+builder.Services.AddScoped<
+    ILogParser,
+    PlainTextLogParser>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

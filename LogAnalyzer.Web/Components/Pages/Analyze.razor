@@ -6,231 +6,477 @@
 
 <PageTitle>Analyze Logs</PageTitle>
 
-<h1>Intelligent Log Analyzer</h1>
+<div class="container-fluid py-4">
+    <div class="mb-4">
+        <h1>Intelligent Log Analyzer</h1>
 
-<p>Upload a text-based application log for analysis.</p>
-
-<InputFile OnChange="HandleFileSelected"
-           accept=".txt,.log"
-           disabled="@isProcessing" />
-
-@if (!string.IsNullOrWhiteSpace(errorMessage))
-{
-    <div class="alert alert-danger mt-3">
-        @errorMessage
+        <p class="text-muted">
+            Upload a text-based application log to identify errors,
+            warnings, HTTP failures and related metadata.
+        </p>
     </div>
-}
 
-@if (isProcessing)
-{
-    <div class="alert alert-info mt-3">
-        Analyzing log file...
-    </div>
-}
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <label class="form-label fw-semibold">
+                Select log file
+            </label>
 
-@if (result is not null)
-{
-    <div class="row mt-4 g-3">
-        <div class="col-md-3">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5>Total Lines</h5>
-                    <strong>@result.TotalLines</strong>
-                </div>
-            </div>
-        </div>
+            <InputFile OnChange="HandleFileSelected"
+                       accept=".txt,.log"
+                       disabled="@isProcessing"
+                       class="form-control" />
 
-        <div class="col-md-3">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5>Errors</h5>
-                    <strong>@result.ErrorCount</strong>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5>Warnings</h5>
-                    <strong>@result.WarningCount</strong>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5>Time Range</h5>
-
-                    @if (result.FirstTimestamp.HasValue &&
-                                    result.LastTimestamp.HasValue)
-                    {
-                        <div>
-                            <strong>
-                                @result.FirstTimestamp.Value.ToString("yyyy-MM-dd HH:mm:ss")
-                            </strong>
-                        </div>
-
-                        <div class="text-muted">
-                            to
-                        </div>
-
-                        <div>
-                            <strong>
-                                @result.LastTimestamp.Value.ToString("yyyy-MM-dd HH:mm:ss")
-                            </strong>
-                        </div>
-                    }
-                    else
-                    {
-                        <strong>Not detected</strong>
-                    }
-                </div>
+            <div class="form-text">
+                Supported formats: .txt and .log. Maximum size: 10 MB.
             </div>
         </div>
     </div>
 
-    <h3 class="mt-5">Detected Log Entries</h3>
-
-    @if (result.Entries.Count == 0)
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
     {
-        <p>No relevant log entries were detected.</p>
-    }
-    else
-    {
-        <div class="table-responsive">
-            <table class="table table-bordered table-hover align-middle">
-                <thead>
-                    <tr>
-                        <th>Line</th>
-                        <th>Timestamp</th>
-                        <th>Severity</th>
-                        <th>Status</th>
-                        <th>Exception</th>
-                        <th>URL</th>
-                        <th>Message</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var entry in result.Entries)
-                    {
-                        <tr>
-                            <td>@entry.LineNumber</td>
-
-                            <td>
-                                @(entry.Timestamp?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")
-                            </td>
-
-                            <td>
-                                @if (entry.Severity == "Critical")
-                                {
-                                    <span class="badge bg-dark">
-                                        @entry.Severity
-                                    </span>
-                                }
-                                else if (entry.Severity == "Error")
-                                {
-                                    <span class="badge bg-danger">
-                                        @entry.Severity
-                                    </span>
-                                }
-                                else if (entry.Severity == "Warning")
-                                {
-                                    <span class="badge bg-warning text-dark">
-                                        @entry.Severity
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-secondary">
-                                        @entry.Severity
-                                    </span>
-                                }
-                        </td>
-
-                        <td>
-                            @(entry.HttpStatusCode?.ToString() ?? "-")
-                        </td>
-
-                        <td>
-                            @(string.IsNullOrWhiteSpace(entry.ExceptionType)
-                                                ? "-"
-                                                : entry.ExceptionType)
-                </td>
-
-                            <td>
-                    @if (!string.IsNullOrWhiteSpace(entry.RequestUrl))
-                                {
-                                    <span class="text-break">
-                                        @entry.RequestUrl
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span>-</span>
-                                }
-                            </td>
-
-                            <td class="text-break">
-                                @entry.Message
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+        <div class="alert alert-danger">
+            @errorMessage
         </div>
     }
 
-    <h3 class="mt-5">Grouped Errors</h3>
-
-    @if (result.ErrorSummaries.Count == 0)
+    @if (isProcessing)
     {
-        <p>No errors or warnings were detected.</p>
+        <div class="alert alert-info">
+            <div class="d-flex align-items-center gap-2">
+                <div class="spinner-border spinner-border-sm"
+                     role="status">
+                </div>
+
+                <span>Analyzing log file...</span>
+            </div>
+        </div>
     }
-    else
+
+    @if (result is not null)
     {
-        <div class="table-responsive">
-            <table class="table table-striped table-hover align-middle">
-                <thead>
-                    <tr>
-                        <th>Count</th>
-                        <th>Status</th>
-                        <th>Exception</th>
-                        <th>Message</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var error in result.ErrorSummaries)
-                    {
-                        <tr>
-                            <td>
-                                <strong>@error.OccurrenceCount</strong>
-                            </td>
+        <div class="row g-3 mb-4">
+            <div class="col-sm-6 col-xl-3">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body">
+                        <div class="text-muted small">
+                            Total lines
+                        </div>
 
-                            <td>
-                                @(error.HttpStatusCode?.ToString() ?? "-")
-                            </td>
+                        <div class="fs-2 fw-semibold">
+                            @result.TotalLines
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                            <td>
-                                @(string.IsNullOrWhiteSpace(error.ExceptionType)
-                                                    ? "-"
-                                                    : error.ExceptionType)
-                </td>
+            <div class="col-sm-6 col-xl-3">
+                <div class="card h-100 shadow-sm border-danger">
+                    <div class="card-body">
+                        <div class="text-muted small">
+                            Errors
+                        </div>
 
-                            <td class="text-break">
-                                @error.Message
-                            </td>
-                        </tr>
+                        <div class="fs-2 fw-semibold text-danger">
+                            @result.ErrorCount
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-xl-3">
+                <div class="card h-100 shadow-sm border-warning">
+                    <div class="card-body">
+                        <div class="text-muted small">
+                            Warnings
+                        </div>
+
+                        <div class="fs-2 fw-semibold text-warning">
+                            @result.WarningCount
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-xl-3">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body">
+                        <div class="text-muted small mb-2">
+                            Time range
+                        </div>
+
+                        @if (result.FirstTimestamp.HasValue &&
+                                            result.LastTimestamp.HasValue)
+                        {
+                            <div class="fw-semibold">
+                                @(result.FirstTimestamp.Value.ToString(
+                                                        "yyyy-MM-dd HH:mm:ss"))
+                                                                           </div>
+
+                            <div class="text-muted small">
+                                to
+                            </div>
+
+                            <div class="fw-semibold">
+                                @(result.LastTimestamp.Value.ToString(
+                                                        "yyyy-MM-dd HH:mm:ss"))
+                    </div>
+                                        }
+                        else
+                        {
+                            <div class="fw-semibold">
+                                Not detected
+                            </div>
                         }
-                </tbody>
-            </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-xl-7">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h2 class="h4 mb-0">
+                            Detected log entries
+                        </h2>
+                    </div>
+
+                    <div class="card-body">
+                        @if (result.Entries.Count == 0)
+                        {
+                            <div class="alert alert-secondary mb-0">
+                                No relevant log entries were detected.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="d-flex flex-column gap-3">
+                                @foreach (var entry in result.Entries)
+                                {
+                                    <div class="card incident-card">
+                                        <div class="card-body">
+                                            <div class="d-flex flex-column
+                                                                    flex-lg-row
+                                                                    justify-content-between
+                                                                    gap-3">
+
+                                                <div class="flex-grow-1 min-width-zero">
+                                                    <div class="d-flex
+                                                                            align-items-center
+                                                                            flex-wrap
+                                                                            gap-2
+                                                                            mb-2">
+
+                                                        @if (entry.Severity == "Critical")
+                                                        {
+                                                            <span class="badge bg-dark">
+                                                                Critical
+                                                            </span>
+                                                        }
+                                                        else if (entry.Severity == "Error")
+                                                        {
+                                                            <span class="badge bg-danger">
+                                                                Error
+                                                            </span>
+                                                        }
+                                                        else if (entry.Severity == "Warning")
+                                                        {
+                                                            <span class="badge
+                                                                                         bg-warning
+                                                                                         text-dark">
+                                                                Warning
+                                                            </span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge bg-secondary">
+                                                                @entry.Severity
+                                                            </span>
+                                                        }
+
+                                                        <span class="text-muted">
+                                                            Line @entry.LineNumber
+                                                        </span>
+
+                                                        @if (entry.Timestamp.HasValue)
+                                                        {
+                                                            <span class="text-muted">
+                                                                @(entry.Timestamp.Value.ToString(
+                                                                                                                "yyyy-MM-dd HH:mm:ss"))
+                                            </span>
+                                                                                        }
+                                                    </div>
+
+                                                    <h3 class="h5 mb-2 text-break">
+                                                        @GetEntryTitle(entry)
+                                                    </h3>
+
+                                                    <p class="mb-3 text-break">
+                                                        @entry.Message
+                                                    </p>
+
+                                                    <div class="d-flex
+                                                                            flex-wrap
+                                                                            gap-2">
+
+                                                        @if (entry.HttpStatusCode.HasValue)
+                                                        {
+                                                            <span class="metadata-pill">
+                                                                HTTP @entry.HttpStatusCode
+                                                            </span>
+                                                        }
+
+                                                        @if (!string.IsNullOrWhiteSpace(
+                                                                                                    entry.ApiPath))
+                                                        {
+                                                            <span class="metadata-pill">
+                                                                API: @entry.ApiPath
+                                                            </span>
+                                                        }
+
+                                                        @if (!string.IsNullOrWhiteSpace(
+                                                                                                    GetServer(entry)))
+                                                        {
+                                                            <span class="metadata-pill">
+                                                                Server: @GetServer(entry)
+                                                            </span>
+                                                        }
+
+                                                        @if (!string.IsNullOrWhiteSpace(
+                                                                                                    entry.Environment))
+                                                        {
+                                                            <span class="metadata-pill">
+                                                                Environment:
+                                                                @entry.Environment
+                                                            </span>
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                <div class="flex-shrink-0">
+                                                    <button type="button"
+                                                            class="btn
+                                                                               btn-outline-primary
+                                                                               btn-sm"
+                                                            @onclick="() =>
+                                                            ToggleDetails(entry)">
+                                            @(IsExpanded(entry)
+                                            ? "Hide details"
+                                            : "View details")
+                                        </button>
+                                    </div>
+                                </div>
+
+                                @if (IsExpanded(entry))
+                                            {
+                                                <hr />
+
+                                                <div class="row g-3">
+                                                    <div class="col-md-6">
+                                                        <DetailItem Label="Timestamp"
+                                                                    Value="@FormatTimestamp(
+                                                                                                                                    entry.Timestamp)" />
+
+                                        <DetailItem Label="Severity"
+                                                    Value="@entry.Severity" />
+
+                                                        <DetailItem Label="HTTP status"
+                                                                    Value="@FormatStatus(
+                                                                                                                    entry.HttpStatusCode)" />
+
+                                        <DetailItem Label="Exception"
+                                                    Value="@FormatValue(
+                                                                                                                    entry.ExceptionType)" />
+
+                                        <DetailItem Label="API path"
+                                                    Value="@FormatValue(
+                                                                                                                    entry.ApiPath)" />
+                                    </div>
+
+                                                    <div class="col-md-6">
+                                                        <DetailItem Label="Server"
+                                                                    Value="@FormatValue(
+                                                                                                                    GetServer(entry))" />
+
+                                        <DetailItem Label="Environment"
+                                                    Value="@FormatValue(
+                                                                                                                    entry.Environment)" />
+
+                                        <DetailItem Label="User"
+                                                    Value="@FormatValue(
+                                                                                                                    entry.UserName)" />
+
+                                        <DetailItem Label="Correlation ID"
+                                                    Value="@FormatValue(
+                                                                                                                    entry.CorrelationId)" />
+
+                                        <DetailItem Label="Request URL"
+                                                    Value="@FormatValue(
+                                                                                                                    entry.RequestUrl)" />
+                                    </div>
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(
+                                                                entry.StackTrace))
+                                                {
+                                                    <div class="mt-3">
+                                                        <div class="fw-semibold mb-1">
+                                                            Stack trace
+                                                        </div>
+
+                                                        <pre class="raw-log mb-0">@entry.StackTrace</pre>
+                                                    </div>
+                                                }
+
+                                                <div class="mt-3">
+                                                    <div class="fw-semibold mb-1">
+                                                        Raw log
+                                                    </div>
+
+                                                    <pre class="raw-log mb-0">@entry.RawContent</pre>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-5">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h2 class="h4 mb-0">
+                            Grouped errors
+                        </h2>
+                    </div>
+
+                    <div class="card-body">
+                        @if (result.ErrorSummaries.Count == 0)
+                        {
+                            <div class="alert alert-secondary mb-0">
+                                No grouped errors were detected.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="list-group list-group-flush">
+                                @foreach (var error in result.ErrorSummaries)
+                                {
+                                    <div class="list-group-item px-0">
+                                        <div class="d-flex
+                                                                justify-content-between
+                                                                gap-3">
+
+                                            <div class="min-width-zero flex-grow-1">
+                                                <div class="fw-semibold text-break">
+                                                    @GetErrorTitle(error)
+                                                </div>
+
+                                                <div class="small
+                                                                        text-muted
+                                                                        text-break
+                                                                        mt-1">
+                                                    @error.Message
+                                                </div>
+
+                                                @if (error.HttpStatusCode.HasValue)
+                                                {
+                                                    <div class="mt-2">
+                                                        <span class="metadata-pill">
+                                                            HTTP
+                                                            @error.HttpStatusCode.Value
+                                                        </span>
+                                                    </div>
+                                                }
+
+                                                <div class="mt-3">
+                                                    <div class="d-flex
+                                                                            align-items-center
+                                                                            flex-wrap
+                                                                            gap-2
+                                                                            mb-2">
+
+                                                        <span class="@GetPriorityBadgeClass(
+                                                                                                                          error.Intelligence.Priority)">
+                                                @error.Intelligence.Priority
+                                                priority
+                                            </span>
+
+                                                        <span class="small text-muted">
+                                                            Score:
+                                                            @error.Intelligence.PriorityScore/100
+                                                        </span>
+                                                    </div>
+
+                                                    <div class="small mb-2">
+                                                        <strong>
+                                                            Likely cause:
+                                                        </strong>
+
+                                                        @error.Intelligence.LikelyCause
+                                                    </div>
+
+                                                    <div class="small mb-2">
+                                                        <strong>
+                                                            Possible impact:
+                                                        </strong>
+
+                                                        @error.Intelligence.Impact
+                                                    </div>
+
+                                                    <details class="small">
+                                                        <summary class="fw-semibold">
+                                                            Suggested investigation
+                                                        </summary>
+
+                                                        <ul class="mt-2 mb-0 ps-3">
+                                                @foreach (var check in
+                                                                                                error.Intelligence
+                                                                                                .RecommendedChecks)
+                                                            {
+                                                                <li class="mb-1">
+                                                                    @check
+                                                                </li>
+                                                            }
+                                                        </ul>
+                                                    </details>
+                                                </div>
+                                            </div>
+
+                                            <div class="text-end flex-shrink-0">
+                                                <span class="badge
+                                                                         bg-primary
+                                                                         rounded-pill
+                                                                         occurrence-badge"
+                                                      title="This issue occurred @error.OccurrenceCount time(s) in the uploaded log."
+                                                      aria-label="Occurred @error.OccurrenceCount time(s)">
+                                                    @error.OccurrenceCount
+                                                </span>
+
+                                                <div class="small text-muted mt-1">
+                                                    occurrences
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
         </div>
     }
-}
+</div>
 
 @code {
     private const long MaximumFileSize = 10 * 1024 * 1024;
+
+    private readonly HashSet<int> expandedLines = [];
 
     private bool isProcessing;
     private string? errorMessage;
@@ -241,6 +487,7 @@
     {
         result = null;
         errorMessage = null;
+        expandedLines.Clear();
         isProcessing = true;
 
         try
@@ -289,5 +536,102 @@
         {
             isProcessing = false;
         }
+    }
+
+    private void ToggleDetails(
+        NormalizedLogEntry entry)
+    {
+        if (!expandedLines.Add(entry.LineNumber))
+        {
+            expandedLines.Remove(entry.LineNumber);
+        }
+    }
+
+    private bool IsExpanded(
+        NormalizedLogEntry entry)
+    {
+        return expandedLines.Contains(entry.LineNumber);
+    }
+
+    private static string GetEntryTitle(
+        NormalizedLogEntry entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.ExceptionType))
+        {
+            return entry.ExceptionType;
+        }
+
+        if (entry.HttpStatusCode.HasValue)
+        {
+            return $"HTTP {entry.HttpStatusCode.Value}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.ApiPath))
+        {
+            return entry.ApiPath;
+        }
+
+        return $"{entry.Severity} log entry";
+    }
+
+    private static string GetErrorTitle(
+        ErrorSummary error)
+    {
+        if (!string.IsNullOrWhiteSpace(error.ExceptionType))
+        {
+            return error.ExceptionType;
+        }
+
+        if (error.HttpStatusCode.HasValue)
+        {
+            return $"HTTP {error.HttpStatusCode.Value}";
+        }
+
+        return "Warning or application event";
+    }
+
+    private static string GetServer(
+        NormalizedLogEntry entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.ServerName))
+        {
+            return entry.ServerName;
+        }
+
+        return entry.MachineName;
+    }
+
+    private static string FormatTimestamp(
+        DateTimeOffset? timestamp)
+    {
+        return timestamp.HasValue
+            ? timestamp.Value.ToString("yyyy-MM-dd HH:mm:ss")
+            : "Not detected";
+    }
+
+    private static string FormatStatus(
+        int? statusCode)
+    {
+        return statusCode?.ToString() ?? "Not detected";
+    }
+        
+    private static string FormatValue(
+        string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? "Not detected"
+            : value;
+    }
+
+    private static string GetPriorityBadgeClass(
+        string priority)
+    {
+        return priority switch
+        {
+            "Critical" => "badge bg-danger",
+            "High" => "badge bg-warning text-dark",
+            "Medium" => "badge bg-primary",
+            _ => "badge bg-secondary"
+        };
     }
 }
