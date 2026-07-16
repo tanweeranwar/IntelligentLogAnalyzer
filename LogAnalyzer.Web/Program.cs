@@ -2,6 +2,7 @@ using LogAnalyzer.Web.Components;
 using LogAnalyzer.Application.Interfaces;
 using LogAnalyzer.Infrastructure.Parsers;
 using LogAnalyzer.Infrastructure.Intelligence;
+using LogAnalyzer.Infrastructure.EventBuilders;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +20,9 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     ILogIncidentBuilder,
     LogIncidentBuilder>();
+builder.Services.AddScoped<
+    IRawLogEventBuilder,
+    MultilineLogEventBuilder>();
 
 var app = builder.Build();
 
