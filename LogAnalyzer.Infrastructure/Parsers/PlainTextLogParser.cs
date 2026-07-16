@@ -40,6 +40,7 @@ public sealed partial class PlainTextLogParser : ILogParser
 
         var lineNumber = 0;
         string? line;
+        DateTimeOffset? currentTimestamp = null;
 
         while ((line = await reader.ReadLineAsync()) is not null)
         {
@@ -79,8 +80,15 @@ public sealed partial class PlainTextLogParser : ILogParser
             var userName =
                 ExtractUserName(line);
 
-            var timestamp =
+            var detectedTimestamp =
                 ExtractTimestamp(line);
+
+            if (detectedTimestamp.HasValue)
+            {
+                currentTimestamp = detectedTimestamp;
+            }
+
+            var timestamp = detectedTimestamp ?? currentTimestamp;
 
             var isRelevant =
                 severity is "Error" or "Critical" or "Warning" ||

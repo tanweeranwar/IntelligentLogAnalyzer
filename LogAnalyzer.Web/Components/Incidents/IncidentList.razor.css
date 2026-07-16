@@ -1,0 +1,17 @@
+﻿.incident-card {
+    border-left: 4px solid #0d6efd;
+}
+
+.metadata-pill {
+    display: inline-block;
+    padding: 0.25rem 0.55rem;
+    border: 1px solid #dee2e6;
+    border-radius: 999px;
+    background: #f8f9fa;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+}
+
+.min-width-zero {
+    min-width: 0;
+}

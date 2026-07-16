@@ -1,0 +1,340 @@
+﻿@using LogAnalyzer.Domain.Models
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2 class="h4 mb-0">
+                Detected incidents
+            </h2>
+
+            <span class="badge bg-primary rounded-pill">
+                @Incidents.Count
+            </span>
+        </div>
+    </div>
+
+    <div class="card-body">
+        @if (Incidents.Count == 0)
+        {
+            <div class="alert alert-secondary mb-0">
+                No incidents were detected.
+            </div>
+        }
+        else
+        {
+            <div class="d-flex flex-column gap-3">
+                @foreach (var incident in Incidents)
+                {
+                    <div class="card incident-card">
+                        <div class="card-body">
+                            <div class="d-flex flex-column
+                                                flex-lg-row
+                                                justify-content-between
+                                                gap-3">
+
+                                <div class="flex-grow-1 min-width-zero">
+                                    <div class="d-flex
+                                                        align-items-center
+                                                        flex-wrap
+                                                        gap-2
+                                                        mb-2">
+
+                                        <span class="@GetSeverityClass(
+                                                                                          incident.Severity)">
+                                    @incident.Severity
+                                </span>
+
+                                        <span class="text-muted">
+                                            @incident.IncidentId
+                                        </span>
+
+                                        <span class="@GetPriorityClass(
+                                                                                  incident.Intelligence.Priority)">
+                                    @incident.Intelligence.Priority
+                                    priority
+                                </span>
+                            </div>
+
+                                    <h3 class="h5 mb-2 text-break">
+                                        @incident.Title
+                                    </h3>
+
+                                    <div class="d-flex flex-wrap gap-2 mb-3">
+                                        <span class="metadata-pill"
+                                              title="Number of log entries grouped into this incident">
+                                            @incident.EntryCount occurrences
+                                        </span>
+
+                                @if (!string.IsNullOrWhiteSpace(
+                                                                incident.ApiPath))
+                                        {
+                                            <span class="metadata-pill">
+                                                API: @incident.ApiPath
+                                            </span>
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(
+                                                                        incident.ServerName))
+                                        {
+                                            <span class="metadata-pill">
+                                                Server: @incident.ServerName
+                                            </span>
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(
+                                                                        incident.Environment))
+                                        {
+                                            <span class="metadata-pill">
+                                                Environment:
+                                                @incident.Environment
+                                            </span>
+                                        }
+
+                                        @if (incident.HttpStatusCode.HasValue)
+                                        {
+                                            <span class="metadata-pill">
+                                                HTTP
+                                                @incident.HttpStatusCode.Value
+                                            </span>
+                                        }
+                                    </div>
+
+                                    <div class="row g-3">
+                                        <div class="col-md-4">
+                                            <div class="small text-muted">
+                                                Started
+                                            </div>
+
+                                            <div class="fw-semibold">
+                                                @FormatTimestamp(
+                                                incident.StartedAt)
+                                    </div>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <div class="small text-muted">
+                                        Ended
+                                    </div>
+
+                                    <div class="fw-semibold">
+                                        @FormatTimestamp(
+                                                                                incident.EndedAt)
+                                    </div>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <div class="small text-muted">
+                                        Duration
+                                    </div>
+
+                                    <div class="fw-semibold">
+                                        @FormatDuration(
+                                                                                incident.Duration)
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mt-3">
+                                <div class="small">
+                                    <strong>Likely cause:</strong>
+                                    @incident.Intelligence.LikelyCause
+                                </div>
+
+                                <div class="small mt-2">
+                                    <strong>Possible impact:</strong>
+                                    @incident.Intelligence.Impact
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex-shrink-0">
+                            <button type="button"
+                                    class="btn btn-outline-primary btn-sm"
+                                    @onclick="() =>
+                                                                                    ToggleIncident(incident)">
+                                @(IsExpanded(incident)
+                                                                ? "Hide details"
+                                                                : "View details")
+                            </button>
+                        </div>
+                    </div>
+
+                    @if (IsExpanded(incident))
+                            {
+                                <hr />
+
+                                <div class="mb-3">
+                                    <div class="d-flex
+                                                            align-items-center
+                                                            flex-wrap
+                                                            gap-2">
+                                        <span class="@GetPriorityClass(
+                                                                                          incident.Intelligence.Priority)">
+                                @incident.Intelligence.Priority
+                                priority
+                            </span>
+
+                                        <span class="text-muted small">
+                                            Score:
+                                            @incident.Intelligence.PriorityScore/100
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <details open>
+                                    <summary class="fw-semibold">
+                                        Suggested investigation
+                                    </summary>
+
+                                    <ul class="mt-2">
+                            @foreach (var check in
+                                                        incident.Intelligence
+                                                        .RecommendedChecks)
+                                        {
+                                            <li class="mb-1">
+                                                @check
+                                            </li>
+                                        }
+                                    </ul>
+                                </details>
+
+                                <div class="mt-4">
+                                    <h4 class="h6">
+                                        Incident log entries
+                                    </h4>
+
+                                    <div class="table-responsive">
+                                        <table class="table
+                                                                  table-sm
+                                                                  table-bordered
+                                                                  align-middle">
+                                            <thead>
+                                                <tr>
+                                                    <th>Line</th>
+                                                    <th>Time</th>
+                                                    <th>Severity</th>
+                                                    <th>Exception</th>
+                                                    <th>Message</th>
+                                                </tr>
+                                            </thead>
+
+                                            <tbody>
+                                                @foreach (var entry in
+                                                                                    incident.Entries)
+                                                {
+                                                    <tr>
+                                                        <td>
+                                                            @entry.LineNumber
+                                                        </td>
+
+                                                        <td>
+                                                            @FormatTimestamp(
+                                                            entry.Timestamp)
+                                        </td>
+
+                                        <td>
+                                            @entry.Severity
+                                        </td>
+
+                                        <td class="text-break">
+                                            @FormatValue(
+                                                                                        entry.ExceptionType)
+                                        </td>
+
+                                        <td class="text-break">
+                                            @entry.Message
+                                        </td>
+                                    </tr>
+                                                                        }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly HashSet<string> expandedIncidentIds = [];
+
+    [Parameter]
+    public IReadOnlyCollection<LogIncident> Incidents { get; set; } =
+        Array.Empty<LogIncident>();
+
+    private void ToggleIncident(
+        LogIncident incident)
+    {
+        if (!expandedIncidentIds.Add(incident.IncidentId))
+        {
+            expandedIncidentIds.Remove(incident.IncidentId);
+        }
+    }
+
+    private bool IsExpanded(
+        LogIncident incident)
+    {
+        return expandedIncidentIds.Contains(
+            incident.IncidentId);
+    }
+
+    private static string FormatTimestamp(
+        DateTimeOffset? timestamp)
+    {
+        return timestamp.HasValue
+            ? timestamp.Value.ToString("yyyy-MM-dd HH:mm:ss")
+            : "Not detected";
+    }
+
+    private static string FormatDuration(
+        TimeSpan? duration)
+    {
+        if (!duration.HasValue)
+        {
+            return "Not detected";
+        }
+
+        if (duration.Value.TotalMinutes >= 1)
+        {
+            return $"{duration.Value.TotalMinutes:F1} minutes";
+        }
+
+        return $"{duration.Value.TotalSeconds:F1} seconds";
+    }
+
+    private static string FormatValue(
+        string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? "-"
+            : value;
+    }
+
+    private static string GetSeverityClass(
+        string severity)
+    {
+        return severity switch
+        {
+            "Critical" => "badge bg-dark",
+            "Error" => "badge bg-danger",
+            "Warning" => "badge bg-warning text-dark",
+            _ => "badge bg-secondary"
+        };
+    }
+
+    private static string GetPriorityClass(
+        string priority)
+    {
+        return priority switch
+        {
+            "Critical" => "badge bg-danger",
+            "High" => "badge bg-warning text-dark",
+            "Medium" => "badge bg-primary",
+            _ => "badge bg-secondary"
+        };
+    }
+}

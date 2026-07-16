@@ -1,0 +1,84 @@
+﻿@using LogAnalyzer.Domain.Models
+
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small">
+                    Total lines
+                </div>
+
+                <div class="fs-2 fw-semibold">
+                    @Result.TotalLines
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="card h-100 shadow-sm border-danger">
+            <div class="card-body">
+                <div class="text-muted small">
+                    Errors
+                </div>
+
+                <div class="fs-2 fw-semibold text-danger">
+                    @Result.ErrorCount
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="card h-100 shadow-sm border-warning">
+            <div class="card-body">
+                <div class="text-muted small">
+                    Warnings
+                </div>
+
+                <div class="fs-2 fw-semibold text-warning">
+                    @Result.WarningCount
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small mb-2">
+                    Time range
+                </div>
+
+                @if (Result.FirstTimestamp.HasValue &&
+                                Result.LastTimestamp.HasValue)
+                {
+                    <div class="fw-semibold">
+                        @(Result.FirstTimestamp.Value.ToString(
+                                            "yyyy-MM-dd HH:mm:ss"))
+                                                               </div>
+
+                    <div class="text-muted small">
+                        to
+                    </div>
+
+                    <div class="fw-semibold">
+                        @(Result.LastTimestamp.Value.ToString(
+                                            "yyyy-MM-dd HH:mm:ss"))
+                </div>
+                                }
+                else
+                {
+                    <div class="fw-semibold">
+                        Not detected
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public LogAnalysisResult Result { get; set; } = new();
+}
