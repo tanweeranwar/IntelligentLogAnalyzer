@@ -16,6 +16,10 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     ILogParser,
     PlainTextLogParser>();
+builder.Services.AddScoped<
+    ILogIncidentBuilder,
+    LogIncidentBuilder>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

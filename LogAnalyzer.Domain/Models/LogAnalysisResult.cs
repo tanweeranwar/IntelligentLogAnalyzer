@@ -19,6 +19,9 @@ public sealed class LogAnalysisResult
 
     public IReadOnlyCollection<ErrorSummary> ErrorSummaries { get; init; } =
         Array.Empty<ErrorSummary>();
+
+    public IReadOnlyCollection<LogIncident> Incidents { get; init; } =
+    Array.Empty<LogIncident>();
 }
 
 public sealed class ErrorSummary

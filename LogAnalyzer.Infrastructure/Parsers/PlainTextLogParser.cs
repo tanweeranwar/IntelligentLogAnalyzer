@@ -7,13 +7,20 @@ namespace LogAnalyzer.Infrastructure.Parsers;
 public sealed partial class PlainTextLogParser : ILogParser
 {
     private readonly IIncidentIntelligenceService
-    _incidentIntelligenceService;
+        _incidentIntelligenceService;
+
+    private readonly ILogIncidentBuilder
+        _incidentBuilder;
 
     public PlainTextLogParser(
-    IIncidentIntelligenceService incidentIntelligenceService)
+        IIncidentIntelligenceService incidentIntelligenceService,
+        ILogIncidentBuilder incidentBuilder)
     {
         _incidentIntelligenceService =
             incidentIntelligenceService;
+
+        _incidentBuilder =
+            incidentBuilder;
     }
 
     public async Task<LogAnalysisResult> AnalyzeAsync(
@@ -40,20 +47,40 @@ public sealed partial class PlainTextLogParser : ILogParser
 
             lineNumber++;
 
-            var exceptionType = ExtractExceptionType(line);
-            var statusCode = ExtractHttpStatusCode(line);
+            var exceptionType =
+                ExtractExceptionType(line);
+
+            var statusCode =
+                ExtractHttpStatusCode(line);
+
             var severity = DetectSeverity(
                 line,
                 statusCode,
                 exceptionType);
-            var requestUrl = ExtractUrl(line);
-            var apiPath = ExtractApiPath(requestUrl);
-            var correlationId = ExtractCorrelationId(line);
-            var serverName = ExtractServerName(line);
-            var machineName = ExtractMachineName(line);
-            var environment = ExtractEnvironment(line);
-            var userName = ExtractUserName(line);
-            var timestamp = ExtractTimestamp(line);
+
+            var requestUrl =
+                ExtractUrl(line);
+
+            var apiPath =
+                ExtractApiPath(requestUrl);
+
+            var correlationId =
+                ExtractCorrelationId(line);
+
+            var serverName =
+                ExtractServerName(line);
+
+            var machineName =
+                ExtractMachineName(line);
+
+            var environment =
+                ExtractEnvironment(line);
+
+            var userName =
+                ExtractUserName(line);
+
+            var timestamp =
+                ExtractTimestamp(line);
 
             var isRelevant =
                 severity is "Error" or "Critical" or "Warning" ||
@@ -118,15 +145,20 @@ public sealed partial class PlainTextLogParser : ILogParser
             .OrderBy(item => item)
             .ToArray();
 
+        var incidents =
+            _incidentBuilder.Build(entries);
+
         return new LogAnalysisResult
         {
             TotalLines = lineNumber,
 
             ErrorCount = entries.Count(
-                item => item.Severity is "Error" or "Critical"),
+                item =>
+                    item.Severity is "Error" or "Critical"),
 
             WarningCount = entries.Count(
-                item => item.Severity == "Warning"),
+                item =>
+                    item.Severity == "Warning"),
 
             FirstTimestamp = timestamps.Length > 0
                 ? timestamps[0]
@@ -137,14 +169,15 @@ public sealed partial class PlainTextLogParser : ILogParser
                 : null,
 
             Entries = entries,
-            ErrorSummaries = summaries
+            ErrorSummaries = summaries,
+            Incidents = incidents
         };
     }
 
     private static string DetectSeverity(
-    string line,
-    int? statusCode,
-    string exceptionType)
+        string line,
+        int? statusCode,
+        string exceptionType)
     {
         if (CriticalLevelRegex().IsMatch(line))
         {
@@ -166,7 +199,8 @@ public sealed partial class PlainTextLogParser : ILogParser
         return "Information";
     }
 
-    private static string ExtractExceptionType(string line)
+    private static string ExtractExceptionType(
+        string line)
     {
         var match = ExceptionRegex().Match(line);
 
@@ -175,14 +209,15 @@ public sealed partial class PlainTextLogParser : ILogParser
             : string.Empty;
     }
 
-    private static int? ExtractHttpStatusCode(string line)
+    private static int? ExtractHttpStatusCode(
+        string line)
     {
         var patterns = new[]
         {
-        HttpStatusAfterHttpRegex(),
-        NamedHttpStatusRegex(),
-        HttpStatusDescriptionRegex()
-    };
+            HttpStatusAfterHttpRegex(),
+            NamedHttpStatusRegex(),
+            HttpStatusDescriptionRegex()
+        };
 
         foreach (var pattern in patterns)
         {
@@ -200,7 +235,8 @@ public sealed partial class PlainTextLogParser : ILogParser
         return null;
     }
 
-    private static string ExtractUrl(string line)
+    private static string ExtractUrl(
+        string line)
     {
         var match = UrlRegex().Match(line);
 
@@ -218,7 +254,8 @@ public sealed partial class PlainTextLogParser : ILogParser
             ']');
     }
 
-    private static string ExtractApiPath(string requestUrl)
+    private static string ExtractApiPath(
+        string requestUrl)
     {
         if (string.IsNullOrWhiteSpace(requestUrl))
         {
@@ -233,7 +270,8 @@ public sealed partial class PlainTextLogParser : ILogParser
             : string.Empty;
     }
 
-    private static string ExtractCorrelationId(string line)
+    private static string ExtractCorrelationId(
+        string line)
     {
         var match = CorrelationIdRegex().Match(line);
 
@@ -242,7 +280,8 @@ public sealed partial class PlainTextLogParser : ILogParser
             : string.Empty;
     }
 
-    private static string ExtractServerName(string line)
+    private static string ExtractServerName(
+        string line)
     {
         var match = ServerNameRegex().Match(line);
 
@@ -251,7 +290,8 @@ public sealed partial class PlainTextLogParser : ILogParser
             : string.Empty;
     }
 
-    private static string ExtractMachineName(string line)
+    private static string ExtractMachineName(
+        string line)
     {
         var match = MachineNameRegex().Match(line);
 
@@ -260,7 +300,8 @@ public sealed partial class PlainTextLogParser : ILogParser
             : string.Empty;
     }
 
-    private static string ExtractEnvironment(string line)
+    private static string ExtractEnvironment(
+        string line)
     {
         var match = EnvironmentRegex().Match(line);
 
@@ -269,7 +310,8 @@ public sealed partial class PlainTextLogParser : ILogParser
             : string.Empty;
     }
 
-    private static string ExtractUserName(string line)
+    private static string ExtractUserName(
+        string line)
     {
         var match = UserNameRegex().Match(line);
 
@@ -278,7 +320,8 @@ public sealed partial class PlainTextLogParser : ILogParser
             : string.Empty;
     }
 
-    private static DateTimeOffset? ExtractTimestamp(string line)
+    private static DateTimeOffset? ExtractTimestamp(
+        string line)
     {
         var match = TimestampRegex().Match(line);
 
@@ -298,16 +341,24 @@ public sealed partial class PlainTextLogParser : ILogParser
         NormalizedLogEntry entry)
     {
         var normalizedMessage = TimestampRegex()
-            .Replace(entry.Message, "{TIMESTAMP}");
+            .Replace(
+                entry.Message,
+                "{TIMESTAMP}");
 
         normalizedMessage = GuidRegex()
-            .Replace(normalizedMessage, "{GUID}");
+            .Replace(
+                normalizedMessage,
+                "{GUID}");
 
         normalizedMessage = NumberRegex()
-            .Replace(normalizedMessage, "{NUMBER}");
+            .Replace(
+                normalizedMessage,
+                "{NUMBER}");
 
         normalizedMessage = WhitespaceRegex()
-            .Replace(normalizedMessage, " ")
+            .Replace(
+                normalizedMessage,
+                " ")
             .ToLowerInvariant()
             .Trim();
 
@@ -322,11 +373,8 @@ public sealed partial class PlainTextLogParser : ILogParser
         @"\b(?:[A-Za-z_][A-Za-z0-9_.]*Exception)\b")]
     private static partial Regex ExceptionRegex();
 
-    //[GeneratedRegex(@"\b([45]\d{2})\b")]
-    //private static partial Regex HttpStatusRegex();
-
     [GeneratedRegex(
-    @"(?i)\bHTTP(?:/\d(?:\.\d)?)?\s+(?:status\s*)?([45]\d{2})\b")]
+        @"(?i)\bHTTP(?:/\d(?:\.\d)?)?\s+(?:status\s*)?([45]\d{2})\b")]
     private static partial Regex HttpStatusAfterHttpRegex();
 
     [GeneratedRegex(
@@ -349,21 +397,24 @@ public sealed partial class PlainTextLogParser : ILogParser
         @"(?i)\b(?:WARNING|WARN)\b")]
     private static partial Regex WarningLevelRegex();
 
-    [GeneratedRegex(@"https?://[^\s""']+")]
+    [GeneratedRegex(
+        @"https?://[^\s""']+")]
     private static partial Regex UrlRegex();
 
-    [GeneratedRegex(@"\b\d{5,}\b")]
+    [GeneratedRegex(
+        @"\b\d{5,}\b")]
     private static partial Regex NumberRegex();
 
     [GeneratedRegex(
-    @"\b\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\b")]
+        @"\b\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\b")]
     private static partial Regex TimestampRegex();
 
     [GeneratedRegex(
         @"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")]
     private static partial Regex GuidRegex();
 
-    [GeneratedRegex(@"\s+")]
+    [GeneratedRegex(
+        @"\s+")]
     private static partial Regex WhitespaceRegex();
 
     [GeneratedRegex(
