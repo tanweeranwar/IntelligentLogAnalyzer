@@ -1,0 +1,293 @@
+﻿@page "/analyze"
+@using LogAnalyzer.Application.Interfaces
+@using LogAnalyzer.Domain.Models
+@inject ILogParser LogParser
+@rendermode InteractiveServer
+
+<PageTitle>Analyze Logs</PageTitle>
+
+<h1>Intelligent Log Analyzer</h1>
+
+<p>Upload a text-based application log for analysis.</p>
+
+<InputFile OnChange="HandleFileSelected"
+           accept=".txt,.log"
+           disabled="@isProcessing" />
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger mt-3">
+        @errorMessage
+    </div>
+}
+
+@if (isProcessing)
+{
+    <div class="alert alert-info mt-3">
+        Analyzing log file...
+    </div>
+}
+
+@if (result is not null)
+{
+    <div class="row mt-4 g-3">
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5>Total Lines</h5>
+                    <strong>@result.TotalLines</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5>Errors</h5>
+                    <strong>@result.ErrorCount</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5>Warnings</h5>
+                    <strong>@result.WarningCount</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5>Time Range</h5>
+
+                    @if (result.FirstTimestamp.HasValue &&
+                                    result.LastTimestamp.HasValue)
+                    {
+                        <div>
+                            <strong>
+                                @result.FirstTimestamp.Value.ToString("yyyy-MM-dd HH:mm:ss")
+                            </strong>
+                        </div>
+
+                        <div class="text-muted">
+                            to
+                        </div>
+
+                        <div>
+                            <strong>
+                                @result.LastTimestamp.Value.ToString("yyyy-MM-dd HH:mm:ss")
+                            </strong>
+                        </div>
+                    }
+                    else
+                    {
+                        <strong>Not detected</strong>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h3 class="mt-5">Detected Log Entries</h3>
+
+    @if (result.Entries.Count == 0)
+    {
+        <p>No relevant log entries were detected.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Line</th>
+                        <th>Timestamp</th>
+                        <th>Severity</th>
+                        <th>Status</th>
+                        <th>Exception</th>
+                        <th>URL</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in result.Entries)
+                    {
+                        <tr>
+                            <td>@entry.LineNumber</td>
+
+                            <td>
+                                @(entry.Timestamp?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-")
+                            </td>
+
+                            <td>
+                                @if (entry.Severity == "Critical")
+                                {
+                                    <span class="badge bg-dark">
+                                        @entry.Severity
+                                    </span>
+                                }
+                                else if (entry.Severity == "Error")
+                                {
+                                    <span class="badge bg-danger">
+                                        @entry.Severity
+                                    </span>
+                                }
+                                else if (entry.Severity == "Warning")
+                                {
+                                    <span class="badge bg-warning text-dark">
+                                        @entry.Severity
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">
+                                        @entry.Severity
+                                    </span>
+                                }
+                        </td>
+
+                        <td>
+                            @(entry.HttpStatusCode?.ToString() ?? "-")
+                        </td>
+
+                        <td>
+                            @(string.IsNullOrWhiteSpace(entry.ExceptionType)
+                                                ? "-"
+                                                : entry.ExceptionType)
+                </td>
+
+                            <td>
+                    @if (!string.IsNullOrWhiteSpace(entry.RequestUrl))
+                                {
+                                    <span class="text-break">
+                                        @entry.RequestUrl
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
+
+                            <td class="text-break">
+                                @entry.Message
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <h3 class="mt-5">Grouped Errors</h3>
+
+    @if (result.ErrorSummaries.Count == 0)
+    {
+        <p>No errors or warnings were detected.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Count</th>
+                        <th>Status</th>
+                        <th>Exception</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var error in result.ErrorSummaries)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@error.OccurrenceCount</strong>
+                            </td>
+
+                            <td>
+                                @(error.HttpStatusCode?.ToString() ?? "-")
+                            </td>
+
+                            <td>
+                                @(string.IsNullOrWhiteSpace(error.ExceptionType)
+                                                    ? "-"
+                                                    : error.ExceptionType)
+                </td>
+
+                            <td class="text-break">
+                                @error.Message
+                            </td>
+                        </tr>
+                        }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private const long MaximumFileSize = 10 * 1024 * 1024;
+
+    private bool isProcessing;
+    private string? errorMessage;
+    private LogAnalysisResult? result;
+
+    private async Task HandleFileSelected(
+        InputFileChangeEventArgs args)
+    {
+        result = null;
+        errorMessage = null;
+        isProcessing = true;
+
+        try
+        {
+            var file = args.File;
+
+            var allowedExtensions = new[]
+            {
+                ".txt",
+                ".log"
+            };
+
+            var extension = Path.GetExtension(file.Name);
+
+            if (!allowedExtensions.Contains(
+                    extension,
+                    StringComparer.OrdinalIgnoreCase))
+            {
+                errorMessage =
+                    "Only .txt and .log files are supported.";
+
+                return;
+            }
+
+            await using var stream =
+                file.OpenReadStream(MaximumFileSize);
+
+            result = await LogParser.AnalyzeAsync(stream);
+        }
+        catch (IOException)
+        {
+            errorMessage =
+                "The file is too large or could not be read.";
+        }
+        catch (OperationCanceledException)
+        {
+            errorMessage =
+                "The log analysis operation was cancelled.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage =
+                $"An unexpected error occurred: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+}
