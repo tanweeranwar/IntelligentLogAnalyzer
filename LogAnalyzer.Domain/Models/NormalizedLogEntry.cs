@@ -31,4 +31,11 @@ public sealed class NormalizedLogEntry
     public string StackTrace { get; init; } = string.Empty;
 
     public string RawContent { get; init; } = string.Empty;
+
+    public string CorrelationGroup { get; init; } = string.Empty;
+
+    public int CorrelationConfidence { get; init; }
+
+    public IReadOnlyCollection<int> RelatedLineNumbers { get; init; } =
+        Array.Empty<int>();
 }

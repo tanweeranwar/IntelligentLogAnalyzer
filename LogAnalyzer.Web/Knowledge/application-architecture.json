@@ -1,0 +1,235 @@
+{
+  "applicationName": "Valuation Services",
+  "description": "Valuation Services Web API and associated production workflows.",
+  "components": [
+    {
+      "name": "Common Service API",
+      "type": "Web API Controller",
+      "description": "Handles shared valuation operations including MPAC image retrieval.",
+      "apiPaths": [
+        "/api/CommonServiceApi/getMpacImages"
+      ],
+      "exceptionTypes": [
+        "System.ArgumentException",
+        "System.Data.SqlClient.SqlException",
+        "Microsoft.Data.SqlClient.SqlException"
+      ],
+      "servers": [
+        "APPPRIVSPR12"
+      ],
+      "dependencies": [
+        "MPAC integration",
+        "Image processing library",
+        "Valuation Services database"
+      ],
+      "databaseObjects": [
+        "AuditLog"
+      ],
+      "keywords": [
+        "getMpacImages",
+        "MPAC",
+        "image",
+        "Parameter is not valid"
+      ],
+      "investigationHints": [
+        "Validate the MPAC image identifier and request parameters.",
+        "Check whether the returned image byte array is null, empty, truncated, or malformed.",
+        "Review code paths that create an image from a stream or byte array.",
+        "Search all logs using the request or correlation ID.",
+        "Validate downstream MPAC connectivity and response content."
+      ]
+    },
+    {
+      "name": "ACI API",
+      "type": "Web API Controller",
+      "description": "Handles ACI submission and audit operations.",
+      "apiPaths": [
+        "/api/AciApi/Submit",
+        "/api/AciApi/AuditLog"
+      ],
+      "exceptionTypes": [
+        "System.Exception",
+        "System.Data.SqlClient.SqlException",
+        "Microsoft.Data.SqlClient.SqlException"
+      ],
+      "servers": [
+        "APPPRIVSPR12"
+      ],
+      "dependencies": [
+        "ACI downstream service",
+        "Valuation Services database"
+      ],
+      "databaseObjects": [
+        "AuditLog"
+      ],
+      "keywords": [
+        "ACI",
+        "Submit",
+        "AuditLog"
+      ],
+      "investigationHints": [
+        "Validate the request payload submitted to ACI.",
+        "Check the downstream ACI response and HTTP status.",
+        "Review AuditLog database writes for the same correlation ID.",
+        "Check database connectivity and SQL exception details."
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "MPAC Image Retrieval",
+      "description": "Retrieves an image from MPAC and converts it into the format expected by the calling valuation workflow.",
+      "apiPaths": [
+        "/api/CommonServiceApi/getMpacImages"
+      ],
+      "components": [
+        "Common Service API"
+      ],
+      "steps": [
+        "Receive MPAC image request.",
+        "Validate the property or image identifier.",
+        "Call the MPAC integration.",
+        "Receive image content or encoded image data.",
+        "Convert the response into an image or byte array.",
+        "Return the result to the calling workflow."
+      ],
+      "dependencies": [
+        "MPAC integration",
+        "Image processing library",
+        "Valuation Services database"
+      ],
+      "keywords": [
+        "MPAC",
+        "image",
+        "getMpacImages"
+      ],
+      "investigationHints": [
+        "Confirm which workflow supplied the property or image identifier.",
+        "Compare successful and failed MPAC responses.",
+        "Validate content type, content length, and image encoding.",
+        "Inspect image conversion code for System.ArgumentException."
+      ]
+    },
+    {
+      "name": "ACI Submission",
+      "description": "Submits valuation information to the ACI integration and records the operation in the audit log.",
+      "apiPaths": [
+        "/api/AciApi/Submit",
+        "/api/AciApi/AuditLog"
+      ],
+      "components": [
+        "ACI API"
+      ],
+      "steps": [
+        "Receive the ACI submission request.",
+        "Validate the submission payload.",
+        "Persist or update audit information.",
+        "Call the downstream ACI service.",
+        "Process the response.",
+        "Return the result to the caller."
+      ],
+      "dependencies": [
+        "ACI downstream service",
+        "Valuation Services database"
+      ],
+      "keywords": [
+        "ACI",
+        "Submit",
+        "AuditLog"
+      ],
+      "investigationHints": [
+        "Validate the incoming ACI request payload.",
+        "Check whether the failure occurred before or after the downstream call.",
+        "Review AuditLog writes and database exceptions.",
+        "Compare correlation IDs across API, database, and downstream logs."
+      ]
+    }
+  ],
+  "knownIssues": [
+    {
+      "title": "Invalid MPAC image content",
+      "description": "The MPAC image endpoint can throw System.ArgumentException when invalid or incomplete image content is passed to the image-conversion library.",
+      "apiPaths": [
+        "/api/CommonServiceApi/getMpacImages"
+      ],
+      "exceptionTypes": [
+        "System.ArgumentException"
+      ],
+      "httpStatusCodes": [
+        500
+      ],
+      "messagePatterns": [
+        "Parameter is not valid",
+        "getMpacImages"
+      ],
+      "likelyCauses": [
+        "The downstream MPAC response contains invalid image bytes.",
+        "The image byte array is empty or truncated.",
+        "The requested MPAC image does not exist.",
+        "The response contains an error payload instead of image content.",
+        "The stream position is incorrect before image conversion."
+      ],
+      "investigationSteps": [
+        "Locate the request using the correlation ID.",
+        "Capture the MPAC response content type and content length.",
+        "Confirm that the response contains image data rather than JSON or HTML.",
+        "Validate the image bytes before passing them into the image library.",
+        "Compare the failed request with a successful request."
+      ],
+      "resolutionSteps": [
+        "Add response validation before image conversion.",
+        "Reject empty or malformed image content with a controlled application error.",
+        "Handle downstream MPAC error responses separately.",
+        "Add logging for image identifier, response status, content type, and content length."
+      ],
+      "suggestedQueries": [
+        "Search logs using the correlation ID from the failed request.",
+        "Query AuditLog for the correlation ID and API path.",
+        "Find other getMpacImages failures with the same image identifier."
+      ]
+    },
+    {
+      "title": "AuditLog database failure",
+      "description": "The application failed while reading or writing ACI audit information.",
+      "apiPaths": [
+        "/api/AciApi/AuditLog",
+        "/api/AciApi/Submit"
+      ],
+      "exceptionTypes": [
+        "System.Data.SqlClient.SqlException",
+        "Microsoft.Data.SqlClient.SqlException"
+      ],
+      "httpStatusCodes": [
+        500
+      ],
+      "messagePatterns": [
+        "Cannot Open the key",
+        "AuditLog"
+      ],
+      "likelyCauses": [
+        "A database encryption key or certificate is unavailable.",
+        "The application database user lacks permission to open the key.",
+        "The database connection is pointing to an incorrect environment.",
+        "The encryption key was not opened within the current database session."
+      ],
+      "investigationSteps": [
+        "Confirm the database and server used by the application instance.",
+        "Review the complete SQL exception and inner exception.",
+        "Validate certificate and symmetric-key permissions for the application account.",
+        "Run the affected query using the same database identity where possible.",
+        "Check recent database deployment or permission changes."
+      ],
+      "resolutionSteps": [
+        "Restore the required database-key permissions.",
+        "Correct the database connection if it points to the wrong environment.",
+        "Open the required key before executing the encrypted query.",
+        "Coordinate with the DBA when certificate or key ownership must be corrected."
+      ],
+      "suggestedQueries": [
+        "Search database logs for key or certificate errors.",
+        "Search application logs using the same correlation ID.",
+        "Review recent database permission and deployment changes."
+      ]
+    }
+  ]
+}

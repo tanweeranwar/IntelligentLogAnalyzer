@@ -6,28 +6,57 @@ namespace LogAnalyzer.Infrastructure.Parsers;
 
 public sealed partial class PlainTextLogParser : ILogParser
 {
-    private readonly IIncidentIntelligenceService
-        _incidentIntelligenceService;
-
-    private readonly ILogIncidentBuilder
-        _incidentBuilder;
-
     private readonly IRawLogEventBuilder
         _rawLogEventBuilder;
 
+    private readonly ILogAnalysisPipeline
+        _analysisPipeline;
+
     public PlainTextLogParser(
-        IIncidentIntelligenceService incidentIntelligenceService,
-        ILogIncidentBuilder incidentBuilder,
-        IRawLogEventBuilder rawLogEventBuilder)
+        IRawLogEventBuilder rawLogEventBuilder,
+        ILogAnalysisPipeline analysisPipeline)
     {
-        _incidentIntelligenceService =
-            incidentIntelligenceService;
-
-        _incidentBuilder =
-            incidentBuilder;
-
         _rawLogEventBuilder =
             rawLogEventBuilder;
+
+        _analysisPipeline =
+            analysisPipeline;
+    }
+
+    public string Name =>
+        "Plain Text Log Parser";
+
+    public IReadOnlyCollection<string> SupportedExtensions { get; } =
+    [
+        ".txt",
+        ".log"
+    ];
+
+    public bool CanParse(
+        string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return false;
+        }
+
+        var extension =
+            Path.GetExtension(fileName);
+
+        return SupportedExtensions.Contains(
+            extension,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    public Task<bool> CanParseAsync(
+        string fileName,
+        Stream stream,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+
+        return Task.FromResult(
+            CanParse(fileName));
     }
 
     public async Task<LogAnalysisResult> AnalyzeAsync(
@@ -36,21 +65,31 @@ public sealed partial class PlainTextLogParser : ILogParser
     {
         ArgumentNullException.ThrowIfNull(stream);
 
+        if (stream.CanSeek)
+        {
+            stream.Position = 0;
+        }
+
         var rawEvents =
             await _rawLogEventBuilder.BuildAsync(
                 stream,
                 cancellationToken);
 
-        var entries = new List<NormalizedLogEntry>();
+        var entries =
+            new List<NormalizedLogEntry>();
 
-        DateTimeOffset? currentTimestamp = null;
+        DateTimeOffset? currentTimestamp =
+            null;
 
         foreach (var rawEvent in rawEvents)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var content = rawEvent.RawContent;
-            var primaryLine = rawEvent.PrimaryLine;
+            var content =
+                rawEvent.RawContent;
+
+            var primaryLine =
+                rawEvent.PrimaryLine;
 
             var exceptionType =
                 ExtractExceptionType(content);
@@ -58,11 +97,12 @@ public sealed partial class PlainTextLogParser : ILogParser
             var statusCode =
                 ExtractHttpStatusCode(content);
 
-            var severity = DetectSeverity(
-                primaryLine,
-                content,
-                statusCode,
-                exceptionType);
+            var severity =
+                DetectSeverity(
+                    primaryLine,
+                    content,
+                    statusCode,
+                    exceptionType);
 
             var requestUrl =
                 ExtractUrl(content);
@@ -99,151 +139,79 @@ public sealed partial class PlainTextLogParser : ILogParser
                 currentTimestamp;
 
             var isRelevant =
-                severity is "Error" or "Critical" or "Warning" ||
-                !string.IsNullOrWhiteSpace(exceptionType) ||
-                statusCode >= 400;
+                severity is
+                    "Error" or
+                    "Critical" or
+                    "Warning" ||
+                !string.IsNullOrWhiteSpace(
+                    exceptionType) ||
+                statusCode is >= 400;
 
             if (!isRelevant)
             {
                 continue;
             }
 
-            entries.Add(new NormalizedLogEntry
-            {
-                LineNumber =
-                    rawEvent.StartLineNumber,
-
-                Timestamp =
-                    timestamp,
-
-                Severity =
-                    severity,
-
-                ExceptionType =
-                    exceptionType,
-
-                Message =
-                    GetDisplayMessage(rawEvent),
-
-                HttpStatusCode =
-                    statusCode,
-
-                RequestUrl =
-                    requestUrl,
-
-                ApiPath =
-                    apiPath,
-
-                CorrelationId =
-                    correlationId,
-
-                ServerName =
-                    serverName,
-
-                MachineName =
-                    machineName,
-
-                Environment =
-                    environment,
-
-                UserName =
-                    userName,
-
-                StackTrace =
-                    ExtractStackTrace(rawEvent),
-
-                RawContent =
-                    content
-            });
-        }
-
-        var summaries = entries
-            .GroupBy(CreateSignature)
-            .Select(group =>
-            {
-                var first = group.First();
-                var occurrenceCount = group.Count();
-
-                return new ErrorSummary
+            entries.Add(
+                new NormalizedLogEntry
                 {
-                    Signature =
-                        group.Key,
+                    LineNumber =
+                        rawEvent.StartLineNumber,
 
-                    Message =
-                        first.Message,
+                    Timestamp =
+                        timestamp,
+
+                    Severity =
+                        severity,
 
                     ExceptionType =
-                        first.ExceptionType,
+                        exceptionType,
+
+                    Message =
+                        GetDisplayMessage(rawEvent),
 
                     HttpStatusCode =
-                        first.HttpStatusCode,
+                        statusCode,
 
-                    OccurrenceCount =
-                        occurrenceCount,
+                    RequestUrl =
+                        requestUrl,
 
-                    Intelligence =
-                        _incidentIntelligenceService.Analyze(
-                            first.Message,
-                            first.ExceptionType,
-                            first.HttpStatusCode,
-                            occurrenceCount)
-                };
-            })
-            .OrderByDescending(
-                item =>
-                    item.Intelligence.PriorityScore)
-            .ThenByDescending(
-                item =>
-                    item.OccurrenceCount)
-            .ToArray();
+                    ApiPath =
+                        apiPath,
 
-        var timestamps = entries
-            .Where(item =>
-                item.Timestamp.HasValue)
-            .Select(item =>
-                item.Timestamp!.Value)
-            .OrderBy(item => item)
-            .ToArray();
+                    CorrelationId =
+                        correlationId,
 
-        var incidents =
-            _incidentBuilder.Build(entries);
+                    ServerName =
+                        serverName,
 
-        var totalLines = rawEvents.Count == 0
-            ? 0
-            : rawEvents.Max(
-                item => item.EndLineNumber);
+                    MachineName =
+                        machineName,
 
-        return new LogAnalysisResult
-        {
-            TotalLines =
-                totalLines,
+                    Environment =
+                        environment,
 
-            ErrorCount = entries.Count(
-                item =>
-                    item.Severity is
-                        "Error" or "Critical"),
+                    UserName =
+                        userName,
 
-            WarningCount = entries.Count(
-                item =>
-                    item.Severity == "Warning"),
+                    StackTrace =
+                        ExtractStackTrace(rawEvent),
 
-            FirstTimestamp = timestamps.Length > 0
-                ? timestamps[0]
-                : null,
+                    RawContent =
+                        content
+                });
+        }
 
-            LastTimestamp = timestamps.Length > 0
-                ? timestamps[^1]
-                : null,
+        var totalLines =
+            rawEvents.Count == 0
+                ? 0
+                : rawEvents.Max(
+                    rawEvent =>
+                        rawEvent.EndLineNumber);
 
-            Entries =
-                entries,
-
-            ErrorSummaries =
-                summaries,
-
-            Incidents =
-                incidents
-        };
+        return _analysisPipeline.Build(
+            totalLines,
+            entries);
     }
 
     private static string DetectSeverity(
@@ -252,29 +220,35 @@ public sealed partial class PlainTextLogParser : ILogParser
         int? statusCode,
         string exceptionType)
     {
-        if (CriticalLevelRegex().IsMatch(primaryLine))
+        if (CriticalLevelRegex().IsMatch(
+                primaryLine))
         {
             return "Critical";
         }
 
-        if (ErrorLevelRegex().IsMatch(primaryLine) ||
-            statusCode >= 400 ||
-            !string.IsNullOrWhiteSpace(exceptionType))
+        if (ErrorLevelRegex().IsMatch(
+                primaryLine) ||
+            statusCode is >= 400 ||
+            !string.IsNullOrWhiteSpace(
+                exceptionType))
         {
             return "Error";
         }
 
-        if (WarningLevelRegex().IsMatch(primaryLine))
+        if (WarningLevelRegex().IsMatch(
+                primaryLine))
         {
             return "Warning";
         }
 
-        if (CriticalLevelRegex().IsMatch(fullContent))
+        if (CriticalLevelRegex().IsMatch(
+                fullContent))
         {
             return "Critical";
         }
 
-        if (WarningLevelRegex().IsMatch(fullContent))
+        if (WarningLevelRegex().IsMatch(
+                fullContent))
         {
             return "Warning";
         }
@@ -296,14 +270,21 @@ public sealed partial class PlainTextLogParser : ILogParser
                 Environment.NewLine,
                 StringSplitOptions.RemoveEmptyEntries)
             .FirstOrDefault()?
-            .Trim() ?? string.Empty;
+            .Trim() ??
+            string.Empty;
     }
 
     private static string ExtractStackTrace(
         RawLogEvent rawEvent)
     {
-        var lines = rawEvent.RawContent
-            .Split(
+        if (string.IsNullOrWhiteSpace(
+                rawEvent.RawContent))
+        {
+            return string.Empty;
+        }
+
+        var lines =
+            rawEvent.RawContent.Split(
                 Environment.NewLine,
                 StringSplitOptions.None);
 
@@ -312,11 +293,12 @@ public sealed partial class PlainTextLogParser : ILogParser
             return string.Empty;
         }
 
-        var continuationLines = lines
-            .Skip(1)
-            .Where(line =>
-                !string.IsNullOrWhiteSpace(line))
-            .ToArray();
+        var continuationLines =
+            lines
+                .Skip(1)
+                .Where(line =>
+                    !string.IsNullOrWhiteSpace(line))
+                .ToArray();
 
         if (continuationLines.Length == 0)
         {
@@ -331,6 +313,11 @@ public sealed partial class PlainTextLogParser : ILogParser
     private static string ExtractExceptionType(
         string content)
     {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return string.Empty;
+        }
+
         var match =
             ExceptionRegex().Match(content);
 
@@ -342,6 +329,11 @@ public sealed partial class PlainTextLogParser : ILogParser
     private static int? ExtractHttpStatusCode(
         string content)
     {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return null;
+        }
+
         var patterns = new[]
         {
             HttpStatusAfterHttpRegex(),
@@ -351,10 +343,15 @@ public sealed partial class PlainTextLogParser : ILogParser
 
         foreach (var pattern in patterns)
         {
-            var match = pattern.Match(content);
+            var match =
+                pattern.Match(content);
 
-            if (match.Success &&
-                int.TryParse(
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            if (int.TryParse(
                     match.Groups[1].Value,
                     out var statusCode))
             {
@@ -368,6 +365,11 @@ public sealed partial class PlainTextLogParser : ILogParser
     private static string ExtractUrl(
         string content)
     {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return string.Empty;
+        }
+
         var match =
             UrlRegex().Match(content);
 
@@ -383,6 +385,8 @@ public sealed partial class PlainTextLogParser : ILogParser
             ';',
             ')',
             ']',
+            '}',
+            '"',
             '\'');
     }
 
@@ -399,70 +403,166 @@ public sealed partial class PlainTextLogParser : ILogParser
             requestUrl,
             UriKind.Absolute,
             out var uri)
-            ? uri.AbsolutePath
-            : string.Empty;
+                ? uri.AbsolutePath
+                : string.Empty;
     }
 
     private static string ExtractCorrelationId(
         string content)
     {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return string.Empty;
+        }
+
         var match =
             CorrelationIdRegex().Match(content);
 
         return match.Success
-            ? match.Groups[1].Value
+            ? match.Groups[1].Value.Trim()
             : string.Empty;
     }
 
     private static string ExtractServerName(
         string content)
     {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return string.Empty;
+        }
+
         var match =
             ServerNameRegex().Match(content);
 
         return match.Success
-            ? match.Groups[1].Value
+            ? match.Groups[1].Value.Trim()
             : string.Empty;
     }
 
     private static string ExtractMachineName(
         string content)
     {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return string.Empty;
+        }
+
         var match =
             MachineNameRegex().Match(content);
 
-        return match.Success
-            ? match.Groups[1].Value
-            : string.Empty;
+        if (match.Success)
+        {
+            return match.Groups[1].Value.Trim();
+        }
+
+        return ExtractServerName(content);
     }
 
     private static string ExtractEnvironment(
         string content)
     {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return string.Empty;
+        }
+
         var match =
             EnvironmentRegex().Match(content);
 
-        return match.Success
-            ? match.Groups[1]
-                .Value
-                .ToUpperInvariant()
-            : string.Empty;
+        if (match.Success)
+        {
+            var environment =
+                match.Groups[1]
+                    .Value
+                    .ToUpperInvariant();
+
+            return environment ==
+                   "PRODUCTION"
+                ? "PROD"
+                : environment;
+        }
+
+        var serverName =
+            ExtractServerName(content);
+
+        if (string.IsNullOrWhiteSpace(
+                serverName))
+        {
+            serverName =
+                ExtractMachineName(content);
+        }
+
+        if (string.IsNullOrWhiteSpace(
+                serverName))
+        {
+            return string.Empty;
+        }
+
+        if (serverName.Contains(
+                "PREPROD",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return "PREPROD";
+        }
+
+        if (serverName.Contains(
+                "RQA",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return "RQA";
+        }
+
+        if (serverName.Contains(
+                "UAT",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return "UAT";
+        }
+
+        if (serverName.Contains(
+                "DEV",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return "DEV";
+        }
+
+        if (serverName.Contains(
+                "PROD",
+                StringComparison.OrdinalIgnoreCase) ||
+            serverName.Contains(
+                "PRIV",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return "PROD";
+        }
+
+        return string.Empty;
     }
 
     private static string ExtractUserName(
         string content)
     {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return string.Empty;
+        }
+
         var match =
             UserNameRegex().Match(content);
 
         return match.Success
-            ? match.Groups[1].Value
+            ? match.Groups[1].Value.Trim()
             : string.Empty;
     }
 
     private static DateTimeOffset? ExtractTimestamp(
         string content)
     {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return null;
+        }
+
         var match =
             TimestampRegex().Match(content);
 
@@ -474,55 +574,12 @@ public sealed partial class PlainTextLogParser : ILogParser
         return DateTimeOffset.TryParse(
             match.Value,
             out var timestamp)
-            ? timestamp
-            : null;
-    }
-
-    private static string CreateSignature(
-        NormalizedLogEntry entry)
-    {
-        var sourceText =
-            string.IsNullOrWhiteSpace(entry.RawContent)
-                ? entry.Message
-                : entry.RawContent;
-
-        var normalizedMessage = TimestampRegex()
-            .Replace(
-                sourceText,
-                "{TIMESTAMP}");
-
-        normalizedMessage = GuidRegex()
-            .Replace(
-                normalizedMessage,
-                "{GUID}");
-
-        normalizedMessage = ThreadOrIdentifierRegex()
-            .Replace(
-                normalizedMessage,
-                "{ID}");
-
-        normalizedMessage = LongNumberRegex()
-            .Replace(
-                normalizedMessage,
-                "{NUMBER}");
-
-        normalizedMessage = WhitespaceRegex()
-            .Replace(
-                normalizedMessage,
-                " ")
-            .ToLowerInvariant()
-            .Trim();
-
-        return string.Join(
-            "|",
-            entry.ExceptionType,
-            entry.HttpStatusCode,
-            entry.ApiPath,
-            normalizedMessage);
+                ? timestamp
+                : null;
     }
 
     [GeneratedRegex(
-        @"\b(?:[A-Za-z_][A-Za-z0-9_.]*Exception)\b")]
+        @"\b(?:[A-Za-z_][A-Za-z0-9_.+`]*Exception)\b")]
     private static partial Regex ExceptionRegex();
 
     [GeneratedRegex(
@@ -558,22 +615,6 @@ public sealed partial class PlainTextLogParser : ILogParser
     private static partial Regex TimestampRegex();
 
     [GeneratedRegex(
-        @"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")]
-    private static partial Regex GuidRegex();
-
-    [GeneratedRegex(
-        @"\[(?:\d+)\]")]
-    private static partial Regex ThreadOrIdentifierRegex();
-
-    [GeneratedRegex(
-        @"\b\d{5,}\b")]
-    private static partial Regex LongNumberRegex();
-
-    [GeneratedRegex(
-        @"\s+")]
-    private static partial Regex WhitespaceRegex();
-
-    [GeneratedRegex(
         @"(?i)\b(?:correlation[-_ ]?id|request[-_ ]?id|trace[-_ ]?id)\s*[:=]\s*([A-Za-z0-9\-]+)")]
     private static partial Regex CorrelationIdRegex();
 
@@ -590,6 +631,6 @@ public sealed partial class PlainTextLogParser : ILogParser
     private static partial Regex EnvironmentRegex();
 
     [GeneratedRegex(
-        @"(?i)\b(?:user|userName|loginName)\s*[:=]\s*([A-Za-z0-9._\\\-]+)")]
+        @"(?i)\b(?:user|userName|loginName)\s*[:=]\s*([A-Za-z0-9._@\\\-]+)")]
     private static partial Regex UserNameRegex();
 }

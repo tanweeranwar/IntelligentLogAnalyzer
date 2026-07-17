@@ -1,45 +1,83 @@
-using LogAnalyzer.Web.Components;
 using LogAnalyzer.Application.Interfaces;
-using LogAnalyzer.Infrastructure.Parsers;
-using LogAnalyzer.Infrastructure.Intelligence;
+using LogAnalyzer.Infrastructure.Correlation;
 using LogAnalyzer.Infrastructure.EventBuilders;
+using LogAnalyzer.Infrastructure.Health;
+using LogAnalyzer.Infrastructure.Intelligence;
+using LogAnalyzer.Infrastructure.Parsers;
+using LogAnalyzer.Web.Components;
+using LogAnalyzer.Infrastructure.Services;
+using LogAnalyzer.Infrastructure.Context;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddRazorComponents()
+// Razor components
+builder.Services
+    .AddRazorComponents()
     .AddInteractiveServerComponents();
 
-builder.Services.AddScoped<ILogParser, PlainTextLogParser>();
+// Parsers
+// Register the specific parser before the generic fallback parser.
 builder.Services.AddScoped<
-    IIncidentIntelligenceService,
-    IncidentIntelligenceService>();
+    ILogParser,
+    EventViewerTextLogParser>();
+
 builder.Services.AddScoped<
     ILogParser,
     PlainTextLogParser>();
+
 builder.Services.AddScoped<
-    ILogIncidentBuilder,
-    LogIncidentBuilder>();
+    ILogParserResolver,
+    LogParserResolver>();
+
+// Event construction and correlation
 builder.Services.AddScoped<
     IRawLogEventBuilder,
     MultilineLogEventBuilder>();
+
+builder.Services.AddScoped<
+    ILogCorrelationService,
+    LogCorrelationService>();
+
+// Incident processing
+builder.Services.AddScoped<
+    ILogIncidentBuilder,
+    LogIncidentBuilder>();
+
+builder.Services.AddScoped<
+    IIncidentIntelligenceService,
+    IncidentIntelligenceService>();
+
+// Health calculation
+builder.Services.AddScoped<
+    IApplicationHealthService,
+    ApplicationHealthService>();
+
+builder.Services.AddScoped<
+    ILogAnalysisPipeline,
+    LogAnalysisPipeline>();
+
+builder.Services.AddScoped<
+    IApplicationContextResolver,
+    JsonApplicationContextResolver>();
 
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+    app.UseExceptionHandler(
+        "/Error",
+        createScopeForErrors: true);
+
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
 
-
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

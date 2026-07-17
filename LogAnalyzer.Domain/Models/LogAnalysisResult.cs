@@ -22,6 +22,8 @@ public sealed class LogAnalysisResult
 
     public IReadOnlyCollection<LogIncident> Incidents { get; init; } =
     Array.Empty<LogIncident>();
+
+    public ApplicationHealth Health { get; init; } = new();
 }
 
 public sealed class ErrorSummary

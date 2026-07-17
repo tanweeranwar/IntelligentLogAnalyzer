@@ -1,7 +1,7 @@
 ﻿@page "/analyze"
 @using LogAnalyzer.Application.Interfaces
 @using LogAnalyzer.Domain.Models
-@inject ILogParser LogParser
+@inject ILogParserResolver ParserResolver
 @rendermode InteractiveServer
 
 <PageTitle>Analyze Logs</PageTitle>
@@ -23,14 +23,23 @@
             </label>
 
             <InputFile OnChange="HandleFileSelected"
-                       accept=".txt,.log"
+                       accept="@AcceptedFileTypes"
                        disabled="@isProcessing"
                        class="form-control" />
 
             <div class="form-text">
-                Supported formats: .txt and .log.
+                Supported formats:
+                @SupportedFormatsText.
                 Maximum size: 10 MB.
             </div>
+
+            @if (!string.IsNullOrWhiteSpace(selectedParserName))
+            {
+                <div class="alert alert-info mt-3 mb-0 py-2">
+                    Parser selected:
+                    <strong>@selectedParserName</strong>
+                </div>
+            }
         </div>
     </div>
 
@@ -56,6 +65,8 @@
 
     @if (result is not null)
     {
+        <HealthDashboard Health="@result.Health" />
+
         <SummaryCards Result="@result" />
 
         <IncidentList Incidents="@result.Incidents" />
@@ -68,43 +79,62 @@
 
     private bool isProcessing;
     private string? errorMessage;
+    private string? selectedParserName;
     private LogAnalysisResult? result;
+
+    private string AcceptedFileTypes =>
+        string.Join(
+            ",",
+            ParserResolver.SupportedExtensions);
+
+    private string SupportedFormatsText =>
+        string.Join(
+            ", ",
+            ParserResolver.SupportedExtensions
+                .Select(extension =>
+                    extension.ToUpperInvariant()));
 
     private async Task HandleFileSelected(
         InputFileChangeEventArgs args)
     {
         result = null;
         errorMessage = null;
+        selectedParserName = null;
         isProcessing = true;
 
         try
         {
             var file = args.File;
 
-            var allowedExtensions = new[]
-            {
-                ".txt",
-                ".log"
-            };
-
-            var extension =
-                Path.GetExtension(file.Name);
-
-            if (!allowedExtensions.Contains(
-                    extension,
-                    StringComparer.OrdinalIgnoreCase))
-            {
-                errorMessage =
-                    "Only .txt and .log files are supported.";
-
-                return;
-            }
-
-            await using var stream =
+            await using var uploadStream =
                 file.OpenReadStream(MaximumFileSize);
 
+            await using var seekableStream =
+                new MemoryStream();
+
+            await uploadStream.CopyToAsync(
+                seekableStream);
+
+            seekableStream.Position = 0;
+
+            var parser =
+                await ParserResolver.ResolveAsync(
+                    file.Name,
+                    seekableStream);
+
+            selectedParserName =
+                parser.Name;
+
+            seekableStream.Position = 0;
+
             result =
-                await LogParser.AnalyzeAsync(stream);
+                await parser.AnalyzeAsync(
+                    seekableStream);
+        }
+        catch (NotSupportedException ex)
+        {
+            errorMessage =
+                ex.Message;
         }
         catch (IOException)
         {

@@ -8,8 +8,13 @@ namespace LogAnalyzer.Infrastructure.Intelligence;
 
 public sealed partial class LogIncidentBuilder : ILogIncidentBuilder
 {
-    private static readonly TimeSpan IncidentWindow =
-        TimeSpan.FromMinutes(5);
+    /*
+     * Repeated errors with the same signature are considered part of
+     * the same incident until there has been no occurrence for this
+     * amount of time.
+     */
+    private static readonly TimeSpan IncidentInactivityWindow =
+        TimeSpan.FromMinutes(30);
 
     private readonly IIncidentIntelligenceService
         _incidentIntelligenceService;
@@ -24,135 +29,320 @@ public sealed partial class LogIncidentBuilder : ILogIncidentBuilder
     public IReadOnlyCollection<LogIncident> Build(
         IReadOnlyCollection<NormalizedLogEntry> entries)
     {
+        ArgumentNullException.ThrowIfNull(entries);
+
         if (entries.Count == 0)
         {
             return Array.Empty<LogIncident>();
         }
 
-        var orderedEntries = entries
-            .OrderBy(entry => entry.Timestamp)
-            .ThenBy(entry => entry.LineNumber)
+        var incidentGroups = entries
+            .GroupBy(CreateIncidentSignature)
+            .SelectMany(signatureGroup =>
+                SplitByInactivityWindow(
+                    signatureGroup
+                        .OrderBy(entry =>
+                            entry.Timestamp.HasValue
+                                ? 0
+                                : 1)
+                        .ThenBy(entry =>
+                            entry.Timestamp)
+                        .ThenBy(entry =>
+                            entry.LineNumber)
+                        .ToArray()))
             .ToArray();
 
-        var groups = new List<List<NormalizedLogEntry>>();
+        var incidents = incidentGroups
+            .Select(group =>
+                CreateIncident(group))
+            .OrderByDescending(incident =>
+                incident.Intelligence.PriorityScore)
+            .ThenByDescending(incident =>
+                incident.EntryCount)
+            .ThenBy(incident =>
+                incident.StartedAt)
+            .ToArray();
 
-        foreach (var entry in orderedEntries)
-        {
-            var signature = CreateIncidentSignature(entry);
-
-            var matchingGroup = groups
-                .LastOrDefault(group =>
-                    BelongsToIncident(
-                        group,
-                        entry,
-                        signature));
-
-            if (matchingGroup is null)
-            {
-                groups.Add([entry]);
-            }
-            else
-            {
-                matchingGroup.Add(entry);
-            }
-        }
-
-        return groups
-            .Select((group, index) =>
-                CreateIncident(group, index + 1))
-            .OrderByDescending(
-                incident =>
-                    incident.Intelligence.PriorityScore)
-            .ThenByDescending(
-                incident => incident.EntryCount)
+        return incidents
+            .Select((incident, index) =>
+                AssignIncidentId(
+                    incident,
+                    index + 1))
             .ToArray();
     }
 
-    private static bool BelongsToIncident(
-        IReadOnlyCollection<NormalizedLogEntry> group,
-        NormalizedLogEntry candidate,
-        string candidateSignature)
+    private static IReadOnlyCollection<
+        IReadOnlyCollection<NormalizedLogEntry>>
+        SplitByInactivityWindow(
+            IReadOnlyCollection<NormalizedLogEntry> entries)
     {
-        var first = group.First();
-        var last = group.Last();
+        if (entries.Count == 0)
+        {
+            return Array.Empty<
+                IReadOnlyCollection<NormalizedLogEntry>>();
+        }
 
-        var groupSignature =
-            CreateIncidentSignature(first);
+        var groups =
+            new List<IReadOnlyCollection<NormalizedLogEntry>>();
 
-        if (!string.Equals(
-                groupSignature,
-                candidateSignature,
-                StringComparison.Ordinal))
+        var currentGroup =
+            new List<NormalizedLogEntry>();
+
+        NormalizedLogEntry? previousEntry =
+            null;
+
+        foreach (var entry in entries)
+        {
+            if (currentGroup.Count == 0)
+            {
+                currentGroup.Add(entry);
+                previousEntry = entry;
+
+                continue;
+            }
+
+            if (ShouldStartNewIncident(
+                    previousEntry,
+                    entry))
+            {
+                groups.Add(
+                    currentGroup.ToArray());
+
+                currentGroup =
+                    new List<NormalizedLogEntry>();
+            }
+
+            currentGroup.Add(entry);
+            previousEntry = entry;
+        }
+
+        if (currentGroup.Count > 0)
+        {
+            groups.Add(
+                currentGroup.ToArray());
+        }
+
+        return groups;
+    }
+
+    private static bool ShouldStartNewIncident(
+        NormalizedLogEntry? previousEntry,
+        NormalizedLogEntry currentEntry)
+    {
+        if (previousEntry is null)
         {
             return false;
         }
 
-        if (!candidate.Timestamp.HasValue ||
-            !last.Timestamp.HasValue)
+        /*
+         * When timestamps are unavailable, entries with the same
+         * signature remain grouped together.
+         */
+        if (!previousEntry.Timestamp.HasValue ||
+            !currentEntry.Timestamp.HasValue)
         {
-            return true;
+            return false;
         }
 
-        return candidate.Timestamp.Value -
-               last.Timestamp.Value <= IncidentWindow;
+        var inactivityGap =
+            currentEntry.Timestamp.Value -
+            previousEntry.Timestamp.Value;
+
+        return inactivityGap >
+               IncidentInactivityWindow;
     }
 
     private LogIncident CreateIncident(
-        IReadOnlyCollection<NormalizedLogEntry> group,
-        int sequence)
+        IReadOnlyCollection<NormalizedLogEntry> group)
     {
-        var first = group.First();
+        var orderedGroup = group
+            .OrderBy(entry =>
+                entry.Timestamp.HasValue
+                    ? 0
+                    : 1)
+            .ThenBy(entry =>
+                entry.Timestamp)
+            .ThenBy(entry =>
+                entry.LineNumber)
+            .ToArray();
 
-        var startedAt = group
-            .Where(entry => entry.Timestamp.HasValue)
-            .Select(entry => entry.Timestamp)
-            .Min();
+        var representativeEntry =
+            GetRepresentativeEntry(orderedGroup);
 
-        var endedAt = group
-            .Where(entry => entry.Timestamp.HasValue)
-            .Select(entry => entry.Timestamp)
-            .Max();
+        var timestampValues = orderedGroup
+            .Where(entry =>
+                entry.Timestamp.HasValue)
+            .Select(entry =>
+                entry.Timestamp!.Value)
+            .OrderBy(timestamp =>
+                timestamp)
+            .ToArray();
+
+        DateTimeOffset? startedAt =
+            timestampValues.Length > 0
+                ? timestampValues[0]
+                : null;
+
+        DateTimeOffset? endedAt =
+            timestampValues.Length > 0
+                ? timestampValues[^1]
+                : null;
+
+        var highestSeverity =
+            GetHighestSeverity(orderedGroup);
 
         var intelligence =
             _incidentIntelligenceService.Analyze(
-                first.Message,
-                first.ExceptionType,
-                first.HttpStatusCode,
-                group.Count);
+                representativeEntry.Message,
+                representativeEntry.ExceptionType,
+                representativeEntry.HttpStatusCode,
+                orderedGroup.Length);
 
         return new LogIncident
         {
-            IncidentId = $"INC-{sequence:0000}",
-            Title = GetIncidentTitle(first),
-            Signature = CreateIncidentSignature(first),
-            StartedAt = startedAt,
-            EndedAt = endedAt,
-            Severity = GetHighestSeverity(group),
-            EntryCount = group.Count,
-            ExceptionType = first.ExceptionType,
-            HttpStatusCode = first.HttpStatusCode,
-            ApiPath = first.ApiPath,
-            ServerName = GetFirstValue(
-                group.Select(entry =>
-                    string.IsNullOrWhiteSpace(entry.ServerName)
-                        ? entry.MachineName
-                        : entry.ServerName)),
-            Environment = GetFirstValue(
-                group.Select(entry => entry.Environment)),
-            CorrelationId = GetFirstValue(
-                group.Select(entry => entry.CorrelationId)),
-            Entries = group.ToArray(),
-            Intelligence = intelligence
+            IncidentId =
+                string.Empty,
+
+            Title =
+                GetIncidentTitle(
+                    representativeEntry),
+
+            Signature =
+                CreateIncidentSignature(
+                    representativeEntry),
+
+            StartedAt =
+                startedAt,
+
+            EndedAt =
+                endedAt,
+
+            Severity =
+                highestSeverity,
+
+            EntryCount =
+                orderedGroup.Length,
+
+            ExceptionType =
+                GetFirstValue(
+                    orderedGroup.Select(entry =>
+                        entry.ExceptionType)),
+
+            HttpStatusCode =
+                GetFirstStatusCode(
+                    orderedGroup),
+
+            ApiPath =
+                GetFirstValue(
+                    orderedGroup.Select(entry =>
+                        entry.ApiPath)),
+
+            ServerName =
+                GetFirstValue(
+                    orderedGroup.Select(entry =>
+                        string.IsNullOrWhiteSpace(
+                            entry.ServerName)
+                                ? entry.MachineName
+                                : entry.ServerName)),
+
+            Environment =
+                GetFirstValue(
+                    orderedGroup.Select(entry =>
+                        entry.Environment)),
+
+            CorrelationId =
+                GetCorrelationValue(
+                    orderedGroup),
+
+            Entries =
+                orderedGroup,
+
+            Intelligence =
+                intelligence
         };
+    }
+
+    private static LogIncident AssignIncidentId(
+        LogIncident incident,
+        int sequence)
+    {
+        return new LogIncident
+        {
+            IncidentId =
+                $"INC-{sequence:0000}",
+
+            Title =
+                incident.Title,
+
+            Signature =
+                incident.Signature,
+
+            StartedAt =
+                incident.StartedAt,
+
+            EndedAt =
+                incident.EndedAt,
+
+            Severity =
+                incident.Severity,
+
+            EntryCount =
+                incident.EntryCount,
+
+            ExceptionType =
+                incident.ExceptionType,
+
+            HttpStatusCode =
+                incident.HttpStatusCode,
+
+            ApiPath =
+                incident.ApiPath,
+
+            ServerName =
+                incident.ServerName,
+
+            Environment =
+                incident.Environment,
+
+            CorrelationId =
+                incident.CorrelationId,
+
+            Entries =
+                incident.Entries,
+
+            Intelligence =
+                incident.Intelligence
+        };
+    }
+
+    private static NormalizedLogEntry GetRepresentativeEntry(
+        IReadOnlyCollection<NormalizedLogEntry> entries)
+    {
+        return entries
+            .OrderBy(entry =>
+                GetSeverityRank(
+                    entry.Severity))
+            .ThenByDescending(entry =>
+                entry.HttpStatusCode ?? 0)
+            .ThenByDescending(entry =>
+                !string.IsNullOrWhiteSpace(
+                    entry.ExceptionType))
+            .First();
     }
 
     private static string GetIncidentTitle(
         NormalizedLogEntry entry)
     {
-        var text = entry.Message.ToLowerInvariant();
+        var message =
+            entry.Message ??
+            string.Empty;
 
-        if (text.Contains("signalr") &&
-            text.Contains("disconnected"))
+        if (message.Contains(
+                "signalr",
+                StringComparison.OrdinalIgnoreCase) &&
+            message.Contains(
+                "disconnected",
+                StringComparison.OrdinalIgnoreCase))
         {
             return "SignalR connection failure";
         }
@@ -168,7 +358,8 @@ public sealed partial class LogIncidentBuilder : ILogIncidentBuilder
             return $"HTTP {entry.HttpStatusCode.Value}";
         }
 
-        if (!string.IsNullOrWhiteSpace(entry.ApiPath))
+        if (!string.IsNullOrWhiteSpace(
+                entry.ApiPath))
         {
             return $"{entry.ApiPath} failure";
         }
@@ -179,81 +370,248 @@ public sealed partial class LogIncidentBuilder : ILogIncidentBuilder
     private static string CreateIncidentSignature(
         NormalizedLogEntry entry)
     {
-        var category = GetIncidentTitle(entry);
+        var category =
+            GetIncidentTitle(entry);
 
-        var normalizedMessage = TimestampRegex()
-            .Replace(entry.Message, "{TIMESTAMP}");
+        var normalizedMessage =
+            NormalizeMessage(
+                entry.Message);
 
-        normalizedMessage = GuidRegex()
-            .Replace(normalizedMessage, "{GUID}");
+        var normalizedExceptionType =
+            NormalizeValue(
+                entry.ExceptionType);
 
-        normalizedMessage = NumberRegex()
-            .Replace(normalizedMessage, "{NUMBER}");
+        var normalizedApiPath =
+            NormalizeApiPath(
+                entry.ApiPath);
 
-        normalizedMessage = WhitespaceRegex()
-            .Replace(normalizedMessage, " ")
-            .Trim()
-            .ToLowerInvariant();
+        var normalizedServer =
+            NormalizeServerName(
+                string.IsNullOrWhiteSpace(
+                    entry.ServerName)
+                        ? entry.MachineName
+                        : entry.ServerName);
 
-        var value = string.Join(
-            "|",
-            category,
-            entry.ExceptionType,
-            entry.HttpStatusCode,
-            entry.ApiPath,
-            normalizedMessage);
+        var normalizedEnvironment =
+            NormalizeValue(
+                entry.Environment);
 
-        var hash = SHA256.HashData(
-            Encoding.UTF8.GetBytes(value));
+        var value =
+            string.Join(
+                "|",
+                NormalizeValue(category),
+                normalizedExceptionType,
+                entry.HttpStatusCode?.ToString() ??
+                string.Empty,
+                normalizedApiPath,
+                normalizedServer,
+                normalizedEnvironment,
+                normalizedMessage);
+
+        var hash =
+            SHA256.HashData(
+                Encoding.UTF8.GetBytes(value));
 
         return Convert.ToHexString(hash);
+    }
+
+    private static string NormalizeMessage(
+        string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return string.Empty;
+        }
+
+        var normalized =
+            TimestampRegex().Replace(
+                message,
+                "{TIMESTAMP}");
+
+        normalized =
+            GuidRegex().Replace(
+                normalized,
+                "{GUID}");
+
+        normalized =
+            HexIdentifierRegex().Replace(
+                normalized,
+                "{HEX}");
+
+        normalized =
+            FileLineNumberRegex().Replace(
+                normalized,
+                ":line {LINE}");
+
+        normalized =
+            NumberRegex().Replace(
+                normalized,
+                "{NUMBER}");
+
+        normalized =
+            WhitespaceRegex().Replace(
+                normalized,
+                " ");
+
+        return normalized
+            .Trim()
+            .ToLowerInvariant();
+    }
+
+    private static string NormalizeApiPath(
+        string? apiPath)
+    {
+        if (string.IsNullOrWhiteSpace(apiPath))
+        {
+            return string.Empty;
+        }
+
+        var normalized =
+            QueryStringRegex().Replace(
+                apiPath,
+                string.Empty);
+
+        normalized =
+            GuidRegex().Replace(
+                normalized,
+                "{GUID}");
+
+        normalized =
+            LongPathNumberRegex().Replace(
+                normalized,
+                "/{ID}");
+
+        normalized =
+            RepeatedSlashRegex().Replace(
+                normalized,
+                "/");
+
+        return normalized
+            .Trim()
+            .TrimEnd('/')
+            .ToLowerInvariant();
+    }
+
+    private static string NormalizeServerName(
+        string? serverName)
+    {
+        if (string.IsNullOrWhiteSpace(serverName))
+        {
+            return string.Empty;
+        }
+
+        return serverName
+            .Trim()
+            .Split('.')[0]
+            .ToUpperInvariant();
+    }
+
+    private static string NormalizeValue(
+        string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : value.Trim()
+                .ToLowerInvariant();
     }
 
     private static string GetHighestSeverity(
         IEnumerable<NormalizedLogEntry> entries)
     {
-        var severities = entries
-            .Select(entry => entry.Severity)
+        return entries
+            .Select(entry =>
+                entry.Severity)
+            .OrderBy(GetSeverityRank)
+            .FirstOrDefault() ??
+            "Information";
+    }
+
+    private static int GetSeverityRank(
+        string? severity)
+    {
+        return severity?.ToUpperInvariant() switch
+        {
+            "CRITICAL" => 0,
+            "ERROR" => 1,
+            "WARNING" => 2,
+            _ => 3
+        };
+    }
+
+    private static int? GetFirstStatusCode(
+        IEnumerable<NormalizedLogEntry> entries)
+    {
+        return entries
+            .Where(entry =>
+                entry.HttpStatusCode.HasValue)
+            .Select(entry =>
+                entry.HttpStatusCode)
+            .FirstOrDefault();
+    }
+
+    private static string GetCorrelationValue(
+        IReadOnlyCollection<NormalizedLogEntry> entries)
+    {
+        var correlationIds = entries
+            .Select(entry =>
+                entry.CorrelationId)
+            .Where(value =>
+                !string.IsNullOrWhiteSpace(value))
+            .Distinct(
+                StringComparer.OrdinalIgnoreCase)
+            .Take(2)
             .ToArray();
 
-        if (severities.Contains("Critical"))
+        return correlationIds.Length switch
         {
-            return "Critical";
-        }
-
-        if (severities.Contains("Error"))
-        {
-            return "Error";
-        }
-
-        if (severities.Contains("Warning"))
-        {
-            return "Warning";
-        }
-
-        return "Information";
+            0 => string.Empty,
+            1 => correlationIds[0],
+            _ => "Multiple"
+        };
     }
 
     private static string GetFirstValue(
         IEnumerable<string> values)
     {
-        return values.FirstOrDefault(
-                   value =>
-                       !string.IsNullOrWhiteSpace(value))
+        return values.FirstOrDefault(value =>
+                   !string.IsNullOrWhiteSpace(value))
                ?? string.Empty;
     }
 
     [GeneratedRegex(
-        @"\b\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\b")]
+        @"\b\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}[ T]\d{1,2}[:.]\d{2}[:.]\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\b")]
     private static partial Regex TimestampRegex();
 
     [GeneratedRegex(
         @"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")]
     private static partial Regex GuidRegex();
 
-    [GeneratedRegex(@"\b\d+\b")]
+    [GeneratedRegex(
+        @"\b(?=[0-9A-Fa-f]{10,}\b)(?=.*[A-Fa-f])[0-9A-Fa-f]+\b")]
+    private static partial Regex HexIdentifierRegex();
+
+    [GeneratedRegex(
+        @":line\s+\d+",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex FileLineNumberRegex();
+
+    [GeneratedRegex(
+        @"\b\d+\b")]
     private static partial Regex NumberRegex();
 
-    [GeneratedRegex(@"\s+")]
+    [GeneratedRegex(
+        @"\?.*$")]
+    private static partial Regex QueryStringRegex();
+
+    [GeneratedRegex(
+        @"/\d{4,}(?=/|$)")]
+    private static partial Regex LongPathNumberRegex();
+
+    [GeneratedRegex(
+        @"/{2,}")]
+    private static partial Regex RepeatedSlashRegex();
+
+    [GeneratedRegex(
+        @"\s+")]
     private static partial Regex WhitespaceRegex();
 }

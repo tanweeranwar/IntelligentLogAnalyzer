@@ -168,6 +168,7 @@
                                                             align-items-center
                                                             flex-wrap
                                                             gap-2">
+
                                         <span class="@GetPriorityClass(
                                                                                           incident.Intelligence.Priority)">
                                 @incident.Intelligence.Priority
@@ -215,6 +216,8 @@
                                                     <th>Severity</th>
                                                     <th>Exception</th>
                                                     <th>Message</th>
+                                                    <th>Correlation</th>
+                                                    <th>Confidence</th>
                                                 </tr>
                                             </thead>
 
@@ -233,19 +236,41 @@
                                         </td>
 
                                         <td>
-                                            @entry.Severity
+                                            <span class="@GetSeverityClass(
+                                                                                                                  entry.Severity)">
+                                                @entry.Severity
+                                            </span>
                                         </td>
 
-                                        <td class="text-break">
-                                            @FormatValue(
+                                                        <td class="text-break">
+                                                            @FormatValue(
                                                                                         entry.ExceptionType)
                                         </td>
 
                                         <td class="text-break">
                                             @entry.Message
                                         </td>
-                                    </tr>
-                                                                        }
+
+                                        <td class="text-break">
+                                            @FormatValue(
+                                                                                        entry.CorrelationGroup)
+                                        </td>
+
+                                        <td>
+                                            @if (entry.CorrelationConfidence > 0)
+                                                            {
+                                                                <span class="@GetConfidenceClass(
+                                                                                                                                          entry.CorrelationConfidence)">
+                                                @entry.CorrelationConfidence%
+                                            </span>
+                                                                                        }
+                                                            else
+                                                            {
+                                                                <span>-</span>
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                }
                                             </tbody>
                                         </table>
                                     </div>
@@ -298,6 +323,11 @@
             return "Not detected";
         }
 
+        if (duration.Value.TotalHours >= 1)
+        {
+            return $"{duration.Value.TotalHours:F1} hours";
+        }
+
         if (duration.Value.TotalMinutes >= 1)
         {
             return $"{duration.Value.TotalMinutes:F1} minutes";
@@ -334,6 +364,18 @@
             "Critical" => "badge bg-danger",
             "High" => "badge bg-warning text-dark",
             "Medium" => "badge bg-primary",
+            _ => "badge bg-secondary"
+        };
+    }
+
+    private static string GetConfidenceClass(
+        int confidence)
+    {
+        return confidence switch
+        {
+            >= 80 => "badge bg-success",
+            >= 50 => "badge bg-primary",
+            >= 25 => "badge bg-warning text-dark",
             _ => "badge bg-secondary"
         };
     }
