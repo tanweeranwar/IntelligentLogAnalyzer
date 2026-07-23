@@ -7,6 +7,7 @@ using LogAnalyzer.Infrastructure.Parsers;
 using LogAnalyzer.Web.Components;
 using LogAnalyzer.Infrastructure.Services;
 using LogAnalyzer.Infrastructure.Context;
+using LogAnalyzer.Infrastructure.Investigation;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -59,6 +60,22 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IApplicationContextResolver,
     JsonApplicationContextResolver>();
+
+builder.Services.AddScoped<
+    IInvestigationEvidenceBuilder,
+    InvestigationEvidenceBuilder>();
+
+builder.Services.AddScoped<
+    IInvestigationPreparationEngine,
+    InvestigationPreparationEngine>();
+
+builder.Services.AddScoped<
+    IDecisionEngine,
+    MockDecisionEngine>();
+
+builder.Services.AddScoped<
+    IInvestigationService,
+    InvestigationService>();
 
 var app = builder.Build();
 

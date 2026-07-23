@@ -15,3 +15,65 @@
 .min-width-zero {
     min-width: 0;
 }
+
+.copilot-launch-panel {
+    padding: 1rem;
+    border: 1px solid #b6d4fe;
+    border-radius: 0.5rem;
+    background: #f4f8ff;
+}
+
+.copilot-report {
+    padding: 1rem;
+    border: 1px solid #cfe2ff;
+    border-radius: 0.65rem;
+    background: #f8fbff;
+}
+
+.copilot-report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.copilot-section {
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    background: #ffffff;
+}
+
+    .copilot-section h5 {
+        margin-bottom: 0.85rem;
+        font-size: 1rem;
+        font-weight: 700;
+    }
+
+.copilot-finding {
+    padding: 0.9rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    background: #ffffff;
+}
+
+.copilot-code {
+    max-height: 320px;
+    margin-bottom: 0.75rem;
+    padding: 0.85rem;
+    overflow: auto;
+    border-radius: 0.4rem;
+    background: #1f2328;
+    color: #f8f9fa;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 767.98px) {
+    .copilot-report-header {
+        flex-direction: column;
+    }
+}

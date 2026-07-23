@@ -73,6 +73,37 @@
         "Review AuditLog database writes for the same correlation ID.",
         "Check database connectivity and SQL exception details."
       ]
+    },
+    {
+      "name": "Xpertdoc Template Manager",
+      "type": "Document Generation Component",
+      "description": "Generates application documents using Xpertdoc templates and supplied business data.",
+      "apiPaths": [],
+      "exceptionTypes": [
+        "Xpertdoc.TemplateManager.Handler.TemplateExecutionException"
+      ],
+      "servers": [],
+      "dependencies": [
+        "Xpertdoc Template Engine",
+        "Document Templates",
+        "Template Input Data",
+        "File Storage"
+      ],
+      "databaseObjects": [],
+      "keywords": [
+        "Xpertdoc",
+        "TemplateExecutionException",
+        "template",
+        "document generation"
+      ],
+      "investigationHints": [
+        "Identify the template name and version used by the failed request.",
+        "Validate that all required template variables were supplied.",
+        "Check for null or invalid values in the template input data.",
+        "Compare the failing request with a successful document-generation request.",
+        "Review recent template deployment or configuration changes.",
+        "Inspect the inner exception from the Xpertdoc template execution failure."
+      ]
     }
   ],
   "workflows": [
@@ -142,6 +173,41 @@
         "Check whether the failure occurred before or after the downstream call.",
         "Review AuditLog writes and database exceptions.",
         "Compare correlation IDs across API, database, and downstream logs."
+      ]
+    },
+    {
+      "name": "Document or Template Generation",
+      "description": "Generates business documents from Xpertdoc templates and application data.",
+      "apiPaths": [],
+      "components": [
+        "Xpertdoc Template Manager"
+      ],
+      "steps": [
+        "Receive a document-generation request.",
+        "Resolve the required template.",
+        "Load the template input data.",
+        "Execute the Xpertdoc template.",
+        "Generate the document output.",
+        "Store or return the generated document."
+      ],
+      "dependencies": [
+        "Xpertdoc Template Engine",
+        "Document Templates",
+        "Template Input Data",
+        "File Storage"
+      ],
+      "keywords": [
+        "Xpertdoc",
+        "TemplateExecutionException",
+        "template",
+        "document"
+      ],
+      "investigationHints": [
+        "Capture the template identifier and version.",
+        "Validate every required template input field.",
+        "Review the complete inner exception and template execution stack trace.",
+        "Check whether the same template succeeds with another request.",
+        "Review recent template or document-generation deployments."
       ]
     }
   ],
@@ -229,6 +295,46 @@
         "Search database logs for key or certificate errors.",
         "Search application logs using the same correlation ID.",
         "Review recent database permission and deployment changes."
+      ]
+    },
+    {
+      "title": "Xpertdoc template execution failure",
+      "description": "Document generation failed while executing an Xpertdoc template.",
+      "apiPaths": [],
+      "exceptionTypes": [
+        "Xpertdoc.TemplateManager.Handler.TemplateExecutionException"
+      ],
+      "httpStatusCodes": [],
+      "messagePatterns": [
+        "TemplateExecutionException",
+        "Xpertdoc"
+      ],
+      "likelyCauses": [
+        "A required template variable is null or missing.",
+        "The template contains an invalid expression.",
+        "The supplied data type does not match the template expectation.",
+        "The deployed template version is invalid or incompatible.",
+        "A dependent image, resource, or document fragment is unavailable."
+      ],
+      "investigationSteps": [
+        "Review the complete inner exception.",
+        "Identify the template name and deployed version.",
+        "Capture the sanitized template input values.",
+        "Compare the failed input with a successful request.",
+        "Validate all required variables and dependent resources.",
+        "Review recent template deployment changes."
+      ],
+      "resolutionSteps": [
+        "Correct the invalid template expression or mapping.",
+        "Supply or validate all mandatory template variables.",
+        "Roll back the template if the issue began after deployment.",
+        "Add input validation before template execution.",
+        "Improve logging to include template name, version, and missing field names."
+      ],
+      "suggestedQueries": [
+        "Search logs using the correlation ID and template name.",
+        "Find other TemplateExecutionException events using the same template.",
+        "Compare successful and failed document-generation requests."
       ]
     }
   ]

@@ -1,4 +1,8 @@
-﻿@using LogAnalyzer.Domain.Models
+﻿@using LogAnalyzer.Application.Interfaces
+@using LogAnalyzer.Domain.AI
+@using LogAnalyzer.Domain.Models
+
+@inject IInvestigationService InvestigationService
 
 <div class="card shadow-sm">
     <div class="card-header bg-white">
@@ -25,7 +29,9 @@
             <div class="d-flex flex-column gap-3">
                 @foreach (var incident in Incidents)
                 {
-                    <div class="card incident-card">
+                    <div class="card incident-card"
+                         @key="incident.IncidentId">
+
                         <div class="card-body">
                             <div class="d-flex flex-column
                                                 flex-lg-row
@@ -176,7 +182,7 @@
                             </span>
 
                                         <span class="text-muted small">
-                                            Score:
+                                            Rule-based score:
                                             @incident.Intelligence.PriorityScore/100
                                         </span>
                                     </div>
@@ -199,6 +205,109 @@
                                     </ul>
                                 </details>
 
+                                <div class="copilot-launch-panel mt-4">
+                                    <div class="d-flex
+                                                            flex-column
+                                                            flex-lg-row
+                                                            justify-content-between
+                                                            align-items-lg-end
+                                                            gap-3">
+
+                                        <div>
+                                            <h4 class="h5 mb-1">
+                                                Production Support Copilot
+                                            </h4>
+
+                                            <p class="text-muted mb-0">
+                                                Build an application-aware
+                                                investigation report using
+                                                the selected incident evidence.
+                                            </p>
+                                        </div>
+
+                                        <div class="d-flex
+                                                                flex-column
+                                                                flex-sm-row
+                                                                gap-2">
+
+                                            <div>
+                                                <label class="form-label
+                                                                          small
+                                                                          mb-1">
+                                                    Investigation mode
+                                                </label>
+
+                                                <select class="form-select
+                                                                           form-select-sm"
+                                                        value="@GetMode(incident)"
+                                                        disabled="@IsAnalyzing(
+                                                                                                                    incident)"
+                                            @onchange="args =>
+                                                                                                        ChangeMode(
+                                                                                                            incident,
+                                                                                                            args)">
+                                        <option value="@InvestigationMode.Quick">
+                                            Quick
+                                        </option>
+
+                                                    <option value="@InvestigationMode.Deep">
+                                                        Deep
+                                                    </option>
+
+                                                    <option value="@InvestigationMode.RootCauseAnalysis">
+                                                        Root Cause Analysis
+                                                    </option>
+                                                </select>
+                                            </div>
+
+                                            <div class="align-self-sm-end">
+                                                <button type="button"
+                                                        class="btn btn-primary btn-sm"
+                                                        disabled="@IsAnalyzing(
+                                                                                                        incident)"
+                                            @onclick="() =>
+                                                                                                        AnalyzeIncidentAsync(
+                                                                                                            incident)">
+
+                                        @if (IsAnalyzing(incident))
+                                                    {
+                                                        <span class="spinner-border
+                                                                                     spinner-border-sm
+                                                                                     me-2"
+                                                              role="status">
+                                                        </span>
+
+                                                        <span>
+                                                            Analyzing...
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span>
+                                                            Analyze with Copilot
+                                                        </span>
+                                                    }
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    @if (GetInvestigationError(
+                                                            incident) is { } error)
+                                    {
+                                        <div class="alert alert-danger mt-3 mb-0">
+                                            @error
+                                        </div>
+                                    }
+                                </div>
+
+                                @if (GetReport(incident) is { } report)
+                                {
+                                    <div class="copilot-report mt-4">
+                                        @RenderInvestigationReport(report)
+                                    </div>
+                                }
+
                                 <div class="mt-4">
                                     <h4 class="h6">
                                         Incident log entries
@@ -209,6 +318,7 @@
                                                                   table-sm
                                                                   table-bordered
                                                                   align-middle">
+
                                             <thead>
                                                 <tr>
                                                     <th>Line</th>
@@ -257,7 +367,8 @@
                                         </td>
 
                                         <td>
-                                            @if (entry.CorrelationConfidence > 0)
+                                            @if (entry
+                                                                                        .CorrelationConfidence > 0)
                                                             {
                                                                 <span class="@GetConfidenceClass(
                                                                                                                                           entry.CorrelationConfidence)">
@@ -287,16 +398,32 @@
 @code {
     private readonly HashSet<string> expandedIncidentIds = [];
 
+    private readonly HashSet<string> analyzingIncidentIds = [];
+
+    private readonly Dictionary<string, InvestigationMode>
+        investigationModes = [];
+
+    private readonly Dictionary<string, InvestigationReport>
+        investigationReports = [];
+
+    private readonly Dictionary<string, string>
+        investigationErrors = [];
+
     [Parameter]
     public IReadOnlyCollection<LogIncident> Incidents { get; set; } =
         Array.Empty<LogIncident>();
+
+    [Parameter]
+    public IReadOnlyCollection<ErrorSummary> ErrorPatterns { get; set; } =
+        Array.Empty<ErrorSummary>();
 
     private void ToggleIncident(
         LogIncident incident)
     {
         if (!expandedIncidentIds.Add(incident.IncidentId))
         {
-            expandedIncidentIds.Remove(incident.IncidentId);
+            expandedIncidentIds.Remove(
+                incident.IncidentId);
         }
     }
 
@@ -307,76 +434,627 @@
             incident.IncidentId);
     }
 
-    private static string FormatTimestamp(
-        DateTimeOffset? timestamp)
+    private InvestigationMode GetMode(
+        LogIncident incident)
     {
-        return timestamp.HasValue
-            ? timestamp.Value.ToString("yyyy-MM-dd HH:mm:ss")
-            : "Not detected";
+        return investigationModes.TryGetValue(
+            incident.IncidentId,
+            out var mode)
+                ? mode
+                : InvestigationMode.Deep;
     }
 
-    private static string FormatDuration(
-        TimeSpan? duration)
+    private void ChangeMode(
+        LogIncident incident,
+        ChangeEventArgs args)
     {
-        if (!duration.HasValue)
+        var value =
+            args.Value?.ToString();
+
+        if (Enum.TryParse<InvestigationMode>(
+                value,
+                ignoreCase: true,
+                out var selectedMode))
         {
-            return "Not detected";
+            investigationModes[incident.IncidentId] =
+                selectedMode;
+        }
+    }
+
+    private async Task AnalyzeIncidentAsync(
+        LogIncident incident)
+    {
+        if (!analyzingIncidentIds.Add(
+                incident.IncidentId))
+        {
+            return;
         }
 
-        if (duration.Value.TotalHours >= 1)
+        investigationErrors.Remove(
+            incident.IncidentId);
+
+        try
         {
-            return $"{duration.Value.TotalHours:F1} hours";
+            var report =
+                await InvestigationService.InvestigateAsync(
+                    incident,
+                    ErrorPatterns,
+                    GetMode(incident));
+
+            investigationReports[incident.IncidentId] =
+                report;
         }
-
-        if (duration.Value.TotalMinutes >= 1)
+        catch (OperationCanceledException)
         {
-            return $"{duration.Value.TotalMinutes:F1} minutes";
+            investigationErrors[incident.IncidentId] =
+                "The investigation was cancelled.";
         }
-
-        return $"{duration.Value.TotalSeconds:F1} seconds";
-    }
-
-    private static string FormatValue(
-        string? value)
-    {
-        return string.IsNullOrWhiteSpace(value)
-            ? "-"
-            : value;
-    }
-
-    private static string GetSeverityClass(
-        string severity)
-    {
-        return severity switch
+        catch (FileNotFoundException ex)
         {
-            "Critical" => "badge bg-dark",
-            "Error" => "badge bg-danger",
-            "Warning" => "badge bg-warning text-dark",
-            _ => "badge bg-secondary"
-        };
+            investigationErrors[incident.IncidentId] =
+                $"Application knowledge could not be loaded: " +
+                $"{ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            investigationErrors[incident.IncidentId] =
+                $"The Copilot investigation could not be completed: " +
+                $"{ex.Message}";
+        }
+        finally
+        {
+            analyzingIncidentIds.Remove(
+                incident.IncidentId);
+        }
     }
 
-    private static string GetPriorityClass(
-        string priority)
+    private bool IsAnalyzing(
+        LogIncident incident)
     {
-        return priority switch
-        {
-            "Critical" => "badge bg-danger",
-            "High" => "badge bg-warning text-dark",
-            "Medium" => "badge bg-primary",
-            _ => "badge bg-secondary"
-        };
+        return analyzingIncidentIds.Contains(
+            incident.IncidentId);
     }
 
-    private static string GetConfidenceClass(
-        int confidence)
+    private InvestigationReport? GetReport(
+        LogIncident incident)
     {
-        return confidence switch
-        {
-            >= 80 => "badge bg-success",
-            >= 50 => "badge bg-primary",
-            >= 25 => "badge bg-warning text-dark",
-            _ => "badge bg-secondary"
-        };
+        return investigationReports.TryGetValue(
+            incident.IncidentId,
+            out var report)
+                ? report
+                : null;
     }
+
+    private string? GetInvestigationError(
+        LogIncident incident)
+    {
+        return investigationErrors.TryGetValue(
+            incident.IncidentId,
+            out var error)
+                ? error
+                : null;
+    }
+
+    private RenderFragment RenderInvestigationReport(
+        InvestigationReport report) =>
+        @<div>
+        <div class="copilot-report-header">
+            <div>
+                <div class="small text-uppercase text-muted fw-semibold">
+                    Production Support Investigation Report
+                </div>
+
+                <h4 class="h5 mb-1">
+                    @report.IncidentId
+                </h4>
+
+                <div class="text-muted small">
+                    Generated:
+                    @(report.GeneratedAt
+                                    .ToLocalTime()
+                                .ToString("yyyy-MM-dd HH:mm:ss"))
+                </div>
+            </div>
+
+            <span class="@GetConfidenceClass(
+                                      report.OverallConfidenceScore)">
+            @report.OverallConfidenceScore%
+            confidence
+        </span>
+    </div>
+
+        <div class="copilot-section">
+            <h5>Executive summary</h5>
+
+            <p class="mb-0">
+                @report.ExecutiveSummary
+            </p>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="copilot-section h-100">
+                    <h5>Affected workflow</h5>
+
+                    <p class="fw-semibold mb-2">
+                        @FormatValue(
+                                        report.AffectedWorkflow)
+                </p>
+
+                <h6 class="small text-uppercase text-muted">
+                    Components
+                </h6>
+
+                @if (report.AffectedComponents.Count == 0)
+                                {
+                <p class="text-muted mb-0">
+                    Not determined.
+                </p>
+                                }
+                                else
+                                {
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach (var component in
+                                        report.AffectedComponents)
+                                        {
+                    <span class="metadata-pill">
+                        @component
+                    </span>
+                                        }
+                </div>
+                                }
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="copilot-section h-100">
+                <h5>Business impact</h5>
+
+                <div class="mb-2">
+                    <strong>Severity:</strong>
+                    @report.BusinessImpact.Severity
+                </div>
+
+                <div class="mb-2">
+                    <strong>Customer:</strong>
+                    @FormatValue(
+                    report.BusinessImpact.CustomerImpact)
+                </div>
+
+                <div class="mb-2">
+                    <strong>Operational:</strong>
+                    @FormatValue(
+                                        report.BusinessImpact.OperationalImpact)
+                </div>
+
+                <div>
+                    <strong>Scope:</strong>
+                    @FormatValue(
+                                        report.BusinessImpact.Scope)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="copilot-section">
+        <h5>Root-cause hypotheses</h5>
+
+        @if (report.RootCauses.Count == 0)
+        {
+            <p class="text-muted mb-0">
+                No evidence-supported root cause was generated.
+            </p>
+        }
+        else
+        {
+            <div class="d-flex flex-column gap-3">
+                @foreach (var cause in report.RootCauses
+                            .OrderByDescending(item =>
+                            item.ConfidenceScore))
+                {
+                    <div class="copilot-finding">
+                        <div class="d-flex
+                                                    justify-content-between
+                                                    align-items-start
+                                                    gap-3">
+
+                            <strong>
+                                @cause.Title
+                            </strong>
+
+                            <span class="@GetConfidenceClass(
+                                                                          cause.ConfidenceScore)">
+                        @cause.ConfidenceScore%
+                    </span>
+                </div>
+
+                        <p class="mt-2 mb-2">
+                            @cause.Explanation
+                        </p>
+
+                @if (cause.SupportingEvidence.Count > 0)
+                        {
+                            <div class="small fw-semibold">
+                                Supporting evidence
+                            </div>
+
+                            <ul class="mb-0">
+                                @foreach (var evidence in
+                                                    cause.SupportingEvidence)
+                                {
+                                    <li>@evidence</li>
+                                }
+                            </ul>
+                        }
+
+                        @if (cause.ContradictingEvidence.Count > 0)
+                        {
+                            <div class="small fw-semibold mt-2">
+                                Limitations or contradictory evidence
+                            </div>
+
+                            <ul class="mb-0">
+                                @foreach (var evidence in
+                                                    cause.ContradictingEvidence)
+                                {
+                                    <li>@evidence</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="copilot-section">
+        <h5>Investigation checklist</h5>
+
+        @if (report.InvestigationSteps.Count == 0)
+        {
+            <p class="text-muted mb-0">
+                No investigation steps were generated.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Priority</th>
+                            <th>Action</th>
+                            <th>Reason</th>
+                            <th>Expected outcome</th>
+                            <th>Confidence</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var step in
+                                            report.InvestigationSteps
+                                            .OrderBy(item =>
+                                            item.Sequence))
+                        {
+                            <tr>
+                                <td>@step.Sequence</td>
+
+                                <td>
+                                    <span class="@GetPriorityClass(
+                                                                                          step.Priority)">
+                                @step.Priority
+                            </span>
+                        </td>
+
+                                <td>
+                                    <strong>@step.Title</strong>
+                                    <div>@step.Action</div>
+                                </td>
+
+                                <td>@step.Reason</td>
+
+                                <td>@step.ExpectedOutcome</td>
+
+                                <td>
+                                    <span class="@GetConfidenceClass(
+                                                                                  step.ConfidenceScore)">
+                                @step.ConfidenceScore%
+                            </span>
+                        </td>
+                    </tr>
+                                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+@if (report.SuggestedSqlQueries.Count > 0)
+{
+        <div class="copilot-section">
+            <h5>Suggested SQL checks</h5>
+
+            @foreach (var sql in
+                    report.SuggestedSqlQueries)
+            {
+                <div class="copilot-finding mb-3">
+                    <div class="d-flex
+                                                justify-content-between
+                                                gap-3">
+
+                        <strong>@sql.Title</strong>
+
+                        <span class="@GetConfidenceClass(
+                                                                  sql.ConfidenceScore)">
+                    @sql.ConfidenceScore%
+                </span>
+            </div>
+
+                    <p class="small text-muted mt-2 mb-2">
+                        @sql.Purpose
+                    </p>
+
+                    <pre class="copilot-code"><code>@sql.Query</code></pre>
+
+                    <div class="small">
+                        <strong>Expected:</strong>
+                        @sql.ExpectedOutcome
+                    </div>
+                </div>
+                }
+        </div>
+}
+
+@if (report.SuggestedCodeLocations.Count > 0)
+{
+        <div class="copilot-section">
+            <h5>Suggested code locations</h5>
+
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Project</th>
+                            <th>Class</th>
+                            <th>Method</th>
+                            <th>Reason</th>
+                            <th>Confidence</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var location in
+                                            report.SuggestedCodeLocations)
+                        {
+                            <tr>
+                                <td>@FormatValue(location.Project)</td>
+                                <td>@FormatValue(location.ClassName)</td>
+                                <td>@FormatValue(location.MethodName)</td>
+                                <td>@location.Reason</td>
+                                <td>
+                                    <span class="@GetConfidenceClass(
+                                                                                          location.ConfidenceScore)">
+                                @location.ConfidenceScore%
+                            </span>
+                        </td>
+                    </tr>
+                                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+}
+
+@if (report.Dependencies.Count > 0)
+{
+        <div class="copilot-section">
+            <h5>Dependency mapping</h5>
+
+            <div class="row g-3">
+                @foreach (var dependency in report.Dependencies)
+                {
+                    <div class="col-lg-6">
+                        <div class="copilot-finding h-100">
+                            <div class="d-flex
+                                                        justify-content-between
+                                                        gap-2">
+
+                                <strong>
+                                    @dependency.Name
+                                </strong>
+
+                                <span class="@GetConfidenceClass(
+                                                                                  dependency.ConfidenceScore)">
+                            @dependency.ConfidenceScore%
+                        </span>
+                    </div>
+
+                            <div class="small text-muted mt-1">
+                                @dependency.Type
+                            </div>
+
+                            <p class="mt-2 mb-2">
+                                @dependency.Role
+                            </p>
+
+                            <div class="small">
+                                <strong>Risk:</strong>
+                                @dependency.Risk
+                            </div>
+                        </div>
+                    </div>
+                        }
+            </div>
+        </div>
+}
+
+@if (report.ResolutionRecommendations.Count > 0)
+{
+        <div class="copilot-section">
+            <h5>Resolution and prevention</h5>
+
+            <div class="d-flex flex-column gap-3">
+                @foreach (var recommendation in
+                            report.ResolutionRecommendations)
+                {
+                    <div class="copilot-finding">
+                        <div class="d-flex
+                                                    justify-content-between
+                                                    gap-3">
+
+                            <div>
+                                <span class="badge bg-secondary me-2">
+                                    @recommendation.RecommendationType
+                                </span>
+
+                                <strong>
+                                    @recommendation.Title
+                                </strong>
+                            </div>
+
+                            <span class="@GetConfidenceClass(
+                                                                          recommendation.ConfidenceScore)">
+                        @recommendation.ConfidenceScore%
+                    </span>
+                </div>
+
+                        <p class="mt-2 mb-2">
+                            @recommendation.Description
+                        </p>
+
+                        <div class="small">
+                            <strong>Risk:</strong>
+                            @recommendation.Risk
+                        </div>
+                    </div>
+                        }
+            </div>
+        </div>
+}
+
+@if (report.Unknowns.Count > 0 ||
+    report.Assumptions.Count > 0)
+{
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="copilot-section h-100">
+                    <h5>Missing information</h5>
+
+                    @if (report.Unknowns.Count == 0)
+                    {
+                        <p class="text-muted mb-0">
+                            No major information gaps identified.
+                        </p>
+                    }
+                    else
+                    {
+                        <ul class="mb-0">
+                            @foreach (var item in report.Unknowns)
+                            {
+                                <li>@item</li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="copilot-section h-100">
+                    <h5>Assumptions</h5>
+
+                    @if (report.Assumptions.Count == 0)
+                    {
+                        <p class="text-muted mb-0">
+                            No assumptions recorded.
+                        </p>
+                    }
+                    else
+                    {
+                        <ul class="mb-0">
+                            @foreach (var item in report.Assumptions)
+                            {
+                                <li>@item</li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+}
+</div>;
+
+private static string FormatTimestamp(
+    DateTimeOffset? timestamp)
+{
+    return timestamp.HasValue
+        ? timestamp.Value.ToString(
+            "yyyy-MM-dd HH:mm:ss")
+        : "Not detected";
+}
+
+private static string FormatDuration(
+    TimeSpan? duration)
+{
+    if (!duration.HasValue)
+    {
+        return "Not detected";
+    }
+
+    if (duration.Value.TotalHours >= 1)
+    {
+        return $"{duration.Value.TotalHours:F1} hours";
+    }
+
+    if (duration.Value.TotalMinutes >= 1)
+    {
+        return $"{duration.Value.TotalMinutes:F1} minutes";
+    }
+
+    return $"{duration.Value.TotalSeconds:F1} seconds";
+}
+
+private static string FormatValue(
+    string? value)
+{
+    return string.IsNullOrWhiteSpace(value)
+        ? "-"
+        : value;
+}
+
+private static string GetSeverityClass(
+    string severity)
+{
+    return severity switch
+    {
+        "Critical" => "badge bg-dark",
+        "Error" => "badge bg-danger",
+        "Warning" => "badge bg-warning text-dark",
+        _ => "badge bg-secondary"
+    };
+}
+
+private static string GetPriorityClass(
+    string priority)
+{
+    return priority switch
+    {
+        "Critical" => "badge bg-danger",
+        "High" => "badge bg-warning text-dark",
+        "Medium" => "badge bg-primary",
+        _ => "badge bg-secondary"
+    };
+}
+
+private static string GetConfidenceClass(
+    int confidence)
+{
+    return confidence switch
+    {
+        >= 80 => "badge bg-success",
+        >= 50 => "badge bg-primary",
+        >= 25 => "badge bg-warning text-dark",
+        _ => "badge bg-secondary"
+    };
+}
 }

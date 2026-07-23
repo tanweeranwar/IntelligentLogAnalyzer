@@ -69,7 +69,8 @@
 
         <SummaryCards Result="@result" />
 
-        <IncidentList Incidents="@result.Incidents" />
+        <IncidentList Incidents="@result.Incidents"
+                      ErrorPatterns="@result.ErrorSummaries" />
     }
 </div>
 
