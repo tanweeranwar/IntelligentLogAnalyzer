@@ -1,5 +1,7 @@
 ﻿using LogAnalyzer.ApplicationIntelligence.Generation;
+using LogAnalyzer.ApplicationIntelligence.Ingestion;
 using LogAnalyzer.ApplicationIntelligence.Interfaces;
+using LogAnalyzer.ApplicationIntelligence.KnowledgeSources;
 using LogAnalyzer.ApplicationIntelligence.Loading;
 using LogAnalyzer.ApplicationIntelligence.Repository;
 using LogAnalyzer.ApplicationIntelligence.Validation;
@@ -44,6 +46,58 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<
             IRepositoryScanner,
             RepositoryScanner>();
+
+        /*
+         * Evidence + declared knowledge.
+         */
+
+        services.AddSingleton<
+            IApplicationKnowledgeSource,
+            LogKnowledgeSource>();
+
+        services.AddSingleton<
+            IApplicationKnowledgeSource,
+            CatalogKnowledgeSource>();
+
+        /*
+         * Repository intelligence.
+         */
+
+        services.AddSingleton<
+            IRepositoryKnowledgeSource,
+            RepositoryKnowledgeSource>();
+
+        services.AddSingleton<
+            IApplicationKnowledgeSource>(
+                provider =>
+                    provider.GetRequiredService<
+                        IRepositoryKnowledgeSource>());
+
+        /*
+         * OpenAPI intelligence.
+         */
+
+        services.AddSingleton<
+            IOpenApiKnowledgeSource,
+            OpenApiKnowledgeSource>();
+
+        services.AddSingleton<
+            IApplicationKnowledgeSource>(
+                provider =>
+                    provider.GetRequiredService<
+                        IOpenApiKnowledgeSource>());
+
+        /*
+         * Profile composition + ingestion.
+         */
+
+        services.AddSingleton<
+            IApplicationProfileBuilder,
+            ApplicationProfileBuilder>();
+
+        services.AddSingleton<
+            IKnowledgeIngestionService,
+            KnowledgeIngestionService>();
 
         services.AddHostedService<
             ApplicationCatalogInitializationService>();

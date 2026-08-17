@@ -9,6 +9,9 @@ using LogAnalyzer.Infrastructure.Services;
 using LogAnalyzer.Infrastructure.Context;
 using LogAnalyzer.Infrastructure.Investigation;
 using LogAnalyzer.ApplicationIntelligence.Extensions;
+using LogAnalyzer.Application.AI;
+using LogAnalyzer.Infrastructure.AI;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -80,6 +83,49 @@ builder.Services.AddScoped<
 
 builder.Services.AddApplicationIntelligence(
     builder.Configuration);
+
+builder.Services
+    .AddOptions<ModelProviderOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            ModelProviderOptions.SectionName));
+
+builder.Services
+    .AddOptions<OllamaOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            OllamaOptions.SectionName));
+
+builder.Services.AddHttpClient<OllamaModelProvider>(
+    (provider, client) =>
+    {
+        var options =
+            provider
+                .GetRequiredService<
+                    IOptions<OllamaOptions>>()
+                .Value;
+
+        client.BaseAddress =
+            new Uri(
+                options.BaseUrl);
+
+        client.Timeout =
+            TimeSpan.FromSeconds(
+                Math.Max(
+                    options.TimeoutSeconds,
+                    30));
+    });
+
+builder.Services.AddSingleton<MockModelProvider>();
+
+builder.Services.AddSingleton<ModelProviderResolver>();
+
+builder.Services.AddTransient<IModelProvider>(
+    provider =>
+        provider
+            .GetRequiredService<
+                ModelProviderResolver>()
+            .Resolve());
 
 var app = builder.Build();
 
