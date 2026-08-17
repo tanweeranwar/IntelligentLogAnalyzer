@@ -73,9 +73,11 @@ builder.Services.AddScoped<
     IInvestigationPreparationEngine,
     InvestigationPreparationEngine>();
 
+builder.Services.AddSingleton<MockDecisionEngine>();
+
 builder.Services.AddScoped<
     IDecisionEngine,
-    MockDecisionEngine>();
+    ModelDecisionEngine>();
 
 builder.Services.AddScoped<
     IInvestigationService,

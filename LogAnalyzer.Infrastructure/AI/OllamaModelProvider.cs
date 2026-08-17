@@ -131,6 +131,31 @@ public sealed class OllamaModelProvider
                     DateTimeOffset.UtcNow
             };
         }
+        catch (OperationCanceledException ex)
+            when (!cancellationToken.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+
+            return new ModelResponse
+            {
+                IsSuccessful =
+                    false,
+
+                ProviderName =
+                    ProviderName,
+
+                ModelName =
+                    _options.Model,
+
+                ErrorMessage =
+                    $"The Ollama request exceeded the configured " +
+                    $"timeout of {_options.TimeoutSeconds} seconds. " +
+                    $"{ex.Message}",
+
+                Duration =
+                    stopwatch.Elapsed
+            };
+        }
         catch (OperationCanceledException)
         {
             throw;
@@ -162,12 +187,14 @@ public sealed class OllamaModelProvider
     private object BuildRequestPayload(
         ModelRequest request)
     {
-        object format =
-            string.IsNullOrWhiteSpace(
-                request.ResponseSchema)
-                ? "json"
-                : ParseSchema(
-                    request.ResponseSchema);
+        //object format =
+        //    string.IsNullOrWhiteSpace(
+        //        request.ResponseSchema)
+        //        ? "json"
+        //        : ParseSchema(
+        //            request.ResponseSchema);
+
+        object format = "json";
 
         return new
         {
@@ -205,7 +232,17 @@ public sealed class OllamaModelProvider
                 new
                 {
                     temperature =
-                        _options.Temperature
+                        _options.Temperature,
+
+                    num_predict =
+                        Math.Max(
+                            _options.MaxOutputTokens,
+                            256),
+
+                    num_ctx =
+                        Math.Max(
+                            _options.ContextWindow,
+                            2048)
                 }
         };
     }
