@@ -1,0 +1,81 @@
+[
+  {
+    "id": "VS-FP-NAMESPACE",
+    "type": "Namespace",
+    "value": "FCT.VS.",
+    "matchMode": "Contains",
+    "weight": 90,
+    "isCaseSensitive": false,
+    "description": "Valuation Services namespace.",
+    "tags": [
+      "vs",
+      "namespace"
+    ]
+  },
+  {
+    "id": "VS-FP-SERVER",
+    "type": "ServerName",
+    "value": "APPPRIVSPR12",
+    "matchMode": "Contains",
+    "weight": 65,
+    "isCaseSensitive": false,
+    "description": "Known Valuation Services production server fingerprint.",
+    "tags": [
+      "vs",
+      "server"
+    ]
+  },
+  {
+    "id": "VS-FP-XPERTDOC",
+    "type": "MessagePattern",
+    "value": "Xpertdoc",
+    "matchMode": "Contains",
+    "weight": 75,
+    "isCaseSensitive": false,
+    "description": "Xpertdoc document-generation fingerprint.",
+    "tags": [
+      "document",
+      "template"
+    ]
+  },
+  {
+    "id": "VS-FP-TEMPLATE-EXECUTION",
+    "type": "Exception",
+    "value": "TemplateExecutionException",
+    "matchMode": "Contains",
+    "weight": 80,
+    "isCaseSensitive": false,
+    "description": "Template execution exception fingerprint.",
+    "tags": [
+      "document",
+      "template",
+      "exception"
+    ]
+  },
+  {
+    "id": "VS-FP-AUTHENTICATE",
+    "type": "ApiPath",
+    "value": "/api/AccountApi/authenticateuser",
+    "matchMode": "Contains",
+    "weight": 95,
+    "isCaseSensitive": false,
+    "description": "Valuation Services authentication endpoint.",
+    "tags": [
+      "authentication",
+      "api"
+    ]
+  },
+  {
+    "id": "VS-FP-AUTH-SP",
+    "type": "StoredProcedure",
+    "value": "spVSAuthenticateUser",
+    "matchMode": "Contains",
+    "weight": 100,
+    "isCaseSensitive": false,
+    "description": "Valuation Services authentication stored procedure.",
+    "tags": [
+      "authentication",
+      "sql"
+    ]
+  }
+]

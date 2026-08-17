@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.37328.6 d17.14
+VisualStudioVersion = 17.14.37328.6
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LogAnalyzer.Web", "LogAnalyzer.Web\LogAnalyzer.Web.csproj", "{BE89ABC9-7F85-4EA8-820E-54A8A9C73BD0}"
 EndProject
@@ -10,6 +10,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LogAnalyzer.Application", "LogAnalyzer.Application\LogAnalyzer.Application.csproj", "{73F5FB4C-FE4A-4AD7-ABFB-E91EDF9705DF}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LogAnalyzer.Infrastructure", "LogAnalyzer.Infrastructure\LogAnalyzer.Infrastructure.csproj", "{F2C6B764-679E-4CDA-BAD1-4EC304AEF6C6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LogAnalyzer.ApplicationIntelligence", "LogAnalyzer.ApplicationIntelligence\LogAnalyzer.ApplicationIntelligence.csproj", "{8A171E28-7271-4BD3-B8A3-E78FEDC4B60A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,6 +35,10 @@ Global
 		{F2C6B764-679E-4CDA-BAD1-4EC304AEF6C6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F2C6B764-679E-4CDA-BAD1-4EC304AEF6C6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F2C6B764-679E-4CDA-BAD1-4EC304AEF6C6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8A171E28-7271-4BD3-B8A3-E78FEDC4B60A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8A171E28-7271-4BD3-B8A3-E78FEDC4B60A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8A171E28-7271-4BD3-B8A3-E78FEDC4B60A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8A171E28-7271-4BD3-B8A3-E78FEDC4B60A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

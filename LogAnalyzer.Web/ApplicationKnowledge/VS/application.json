@@ -1,0 +1,33 @@
+{
+  "applicationId": "VS",
+  "applicationName": "Valuation Services",
+  "description": "Valuation Services application ecosystem supporting order processing, valuation workflows, integrations and document generation.",
+  "ownerTeam": "Production Support",
+  "businessOwner": "",
+  "technicalOwner": "",
+  "version": "1.0",
+  "packageVersion": "1.0",
+  "isActive": true,
+  "technologies": [
+    ".NET Framework",
+    "ASP.NET MVC",
+    "ASP.NET Web API",
+    "Angular",
+    "SQL Server"
+  ],
+  "environments": [
+    "DEV",
+    "RQA3",
+    "PREPROD",
+    "PROD"
+  ],
+  "supportTeams": [
+    "Production Support",
+    "Valuation Services Development"
+  ],
+  "attributes": {
+    "domain": "Valuation",
+    "supportTier": "Production Support",
+    "knowledgeStatus": "Initial"
+  }
+}

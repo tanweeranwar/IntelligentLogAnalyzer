@@ -1,0 +1,70 @@
+[
+  {
+    "id": "VS-GATEWAY-COMPONENT",
+    "name": "VS Gateway",
+    "componentType": "Web Application",
+    "description": "User-facing gateway for Valuation Services.",
+    "repositoryId": "VS-GATEWAY",
+    "ownershipTeam": "Valuation Services Development",
+    "dependsOn": [
+      "VS-WEBAPI-COMPONENT"
+    ],
+    "usedBy": [],
+    "environments": [
+      "RQA3",
+      "PREPROD",
+      "PROD"
+    ],
+    "tags": [
+      "gateway",
+      "web"
+    ]
+  },
+  {
+    "id": "VS-WEBAPI-COMPONENT",
+    "name": "VS WebApi",
+    "componentType": "HTTP API",
+    "description": "Primary application API for Valuation Services.",
+    "repositoryId": "VS-WEBAPI",
+    "ownershipTeam": "Valuation Services Development",
+    "dependsOn": [
+      "VS-SERVICES-COMPONENT",
+      "VS-DATABASE"
+    ],
+    "usedBy": [
+      "VS-GATEWAY-COMPONENT"
+    ],
+    "environments": [
+      "RQA3",
+      "PREPROD",
+      "PROD"
+    ],
+    "tags": [
+      "api",
+      "backend"
+    ]
+  },
+  {
+    "id": "VS-SERVICES-COMPONENT",
+    "name": "VS Services",
+    "componentType": "Business Service",
+    "description": "Business logic and downstream integration services.",
+    "repositoryId": "VS-SERVICES",
+    "ownershipTeam": "Valuation Services Development",
+    "dependsOn": [
+      "VS-DATABASE"
+    ],
+    "usedBy": [
+      "VS-WEBAPI-COMPONENT"
+    ],
+    "environments": [
+      "RQA3",
+      "PREPROD",
+      "PROD"
+    ],
+    "tags": [
+      "service",
+      "business"
+    ]
+  }
+]

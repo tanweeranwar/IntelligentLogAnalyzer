@@ -1,0 +1,45 @@
+[
+  {
+    "id": "VS-RUNBOOK-DOCUMENT-GENERATION",
+    "title": "Document Generation Failure Investigation",
+    "description": "Investigation guidance for document and template generation failures.",
+    "ownerTeam": "Production Support",
+    "severityScope": "All",
+    "preconditions": [
+      "Capture the earliest complete exception and stack trace",
+      "Identify the affected environment and server",
+      "Identify the template or document type where available"
+    ],
+    "investigationSteps": [
+      "Confirm whether the issue affects one request or multiple requests",
+      "Compare successful and failed template input data",
+      "Validate the selected template and template version",
+      "Review template engine logs",
+      "Check storage, permissions and output paths",
+      "Review recent template, application and configuration changes"
+    ],
+    "mitigationSteps": [
+      "Retry only after confirming the request is idempotent",
+      "Use a previously validated template version when approved"
+    ],
+    "validationSteps": [
+      "Generate a document using known-good test data",
+      "Confirm the output is stored or returned correctly",
+      "Confirm no new errors are produced"
+    ],
+    "escalationCriteria": [
+      "Template defect requires a template owner",
+      "Application code fails while building template input",
+      "Dependency is unavailable or returns unexpected results"
+    ],
+    "relatedWorkflowIds": [
+      "VS-DOCUMENT-GENERATION"
+    ],
+    "relatedKnownIssueIds": [],
+    "tags": [
+      "document",
+      "template",
+      "runbook"
+    ]
+  }
+]

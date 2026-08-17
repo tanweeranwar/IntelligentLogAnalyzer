@@ -1,0 +1,28 @@
+[
+  {
+    "id": "VS-XPERTDOC",
+    "name": "Xpertdoc Template Engine",
+    "dependencyType": "Document Generation",
+    "description": "Template-processing dependency used for document generation.",
+    "direction": "Outbound",
+    "ownershipTeam": "Valuation Services Development",
+    "criticality": "High",
+    "endpoints": [],
+    "failureSymptoms": [
+      "Template execution failure",
+      "Document generation failure",
+      "Template variable validation failure"
+    ],
+    "healthChecks": [
+      "Validate template availability",
+      "Validate template input data",
+      "Review template engine logs",
+      "Verify storage and output-path availability"
+    ],
+    "tags": [
+      "xpertdoc",
+      "template",
+      "document"
+    ]
+  }
+]

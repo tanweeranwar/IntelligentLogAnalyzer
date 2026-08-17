@@ -1,0 +1,64 @@
+[
+  {
+    "id": "VS-GATEWAY",
+    "name": "VS Gateway",
+    "description": "Client-facing web application and API gateway.",
+    "repositoryType": "Application",
+    "defaultBranch": "main",
+    "relativePath": "",
+    "ownershipTeam": "Valuation Services Development",
+    "technologies": [
+      "Angular",
+      "ASP.NET"
+    ],
+    "components": [
+      "VS Gateway"
+    ],
+    "tags": [
+      "gateway",
+      "web"
+    ]
+  },
+  {
+    "id": "VS-WEBAPI",
+    "name": "VS WebApi",
+    "description": "Valuation Services HTTP API.",
+    "repositoryType": "Application",
+    "defaultBranch": "main",
+    "relativePath": "",
+    "ownershipTeam": "Valuation Services Development",
+    "technologies": [
+      "ASP.NET Web API",
+      ".NET Framework"
+    ],
+    "components": [
+      "Controllers",
+      "API Services"
+    ],
+    "tags": [
+      "api",
+      "backend"
+    ]
+  },
+  {
+    "id": "VS-SERVICES",
+    "name": "VS Services",
+    "description": "Business and integration services supporting valuation workflows.",
+    "repositoryType": "Application",
+    "defaultBranch": "main",
+    "relativePath": "",
+    "ownershipTeam": "Valuation Services Development",
+    "technologies": [
+      ".NET Framework",
+      "WCF"
+    ],
+    "components": [
+      "Order Service",
+      "External Integrations"
+    ],
+    "tags": [
+      "services",
+      "business"
+    ]
+  }
+]

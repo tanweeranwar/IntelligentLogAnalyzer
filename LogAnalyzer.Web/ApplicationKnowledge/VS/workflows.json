@@ -1,0 +1,38 @@
+[
+  {
+    "id": "VS-DOCUMENT-GENERATION",
+    "name": "Document or Template Generation",
+    "description": "Generates documents from application data and configured templates.",
+    "businessPurpose": "Produce customer and operational documents required by valuation workflows.",
+    "ownerTeam": "Valuation Services Development",
+    "steps": [
+      "Receive document-generation request",
+      "Resolve template",
+      "Build template input data",
+      "Execute template engine",
+      "Store or return generated document"
+    ],
+    "entryPoints": [],
+    "componentIds": [
+      "VS-WEBAPI-COMPONENT",
+      "VS-SERVICES-COMPONENT"
+    ],
+    "dependencyIds": [
+      "VS-XPERTDOC"
+    ],
+    "databaseObjectIds": [],
+    "runbookIds": [
+      "VS-RUNBOOK-DOCUMENT-GENERATION"
+    ],
+    "knownIssueIds": [],
+    "fingerprintIds": [
+      "VS-FP-XPERTDOC",
+      "VS-FP-TEMPLATE-EXECUTION"
+    ],
+    "tags": [
+      "document",
+      "template",
+      "xpertdoc"
+    ]
+  }
+]

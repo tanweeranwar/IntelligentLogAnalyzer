@@ -8,6 +8,7 @@ using LogAnalyzer.Web.Components;
 using LogAnalyzer.Infrastructure.Services;
 using LogAnalyzer.Infrastructure.Context;
 using LogAnalyzer.Infrastructure.Investigation;
+using LogAnalyzer.ApplicationIntelligence.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -76,6 +77,9 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IInvestigationService,
     InvestigationService>();
+
+builder.Services.AddApplicationIntelligence(
+    builder.Configuration);
 
 var app = builder.Build();
 
