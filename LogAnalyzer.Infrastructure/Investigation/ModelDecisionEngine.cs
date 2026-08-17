@@ -14,6 +14,10 @@ public sealed class ModelDecisionEngine
     private readonly InvestigationModelResponseParser _responseParser;
     private readonly InvestigationEvidenceDistiller _evidenceDistiller;
     private readonly ILogger<ModelDecisionEngine> _logger;
+    private readonly EvidenceAuthorityEvaluator _authorityEvaluator;
+    private readonly InvestigationReportGuardrail _guardrail;
+    private readonly AuthorityAwareEvidenceBuilder
+    _authorityAwareEvidenceBuilder;
 
     public ModelDecisionEngine(
         IModelProvider modelProvider,
@@ -40,6 +44,15 @@ public sealed class ModelDecisionEngine
 
         _evidenceDistiller =
             new InvestigationEvidenceDistiller();
+
+        _authorityEvaluator =
+            new EvidenceAuthorityEvaluator();
+
+        _guardrail =
+            new InvestigationReportGuardrail();
+
+        _authorityAwareEvidenceBuilder =
+            new AuthorityAwareEvidenceBuilder();
     }
 
     public async Task<InvestigationReport> AnalyzeAsync(
@@ -59,10 +72,23 @@ public sealed class ModelDecisionEngine
             _evidenceDistiller.Distill(
                 package);
 
+        var claims =
+            _authorityEvaluator.Evaluate(
+                evidence);
+
+        var authorityAwareEvidence =
+            _authorityAwareEvidenceBuilder.Build(
+                claims);
+
+        var guardedBaselineReport =
+            _guardrail.Apply(
+                baselineReport,
+                claims);
+
         var request =
             BuildModelRequest(
                 baselineReport,
-                evidence,
+                authorityAwareEvidence,
                 package.Metadata);
 
         _logger.LogInformation(
@@ -79,11 +105,12 @@ public sealed class ModelDecisionEngine
         if (!response.IsSuccessful)
         {
             _logger.LogWarning(
-                "AI investigation failed using provider {Provider}. Falling back to deterministic report. Error: {Error}",
+                "AI investigation failed using provider {Provider}. " +
+                "Falling back to guarded deterministic report. Error: {Error}",
                 response.ProviderName,
                 response.ErrorMessage);
 
-            return baselineReport;
+            return guardedBaselineReport;
         }
 
         if (!_responseParser.TryParse(
@@ -92,10 +119,11 @@ public sealed class ModelDecisionEngine
                 out var parserError))
         {
             _logger.LogWarning(
-                "AI response could not be parsed. Falling back to deterministic report. Error: {Error}",
+                "AI response could not be parsed. " +
+                "Falling back to guarded deterministic report. Error: {Error}",
                 parserError);
 
-            return baselineReport;
+            return guardedBaselineReport;
         }
 
         var report =
@@ -103,21 +131,28 @@ public sealed class ModelDecisionEngine
                 baselineReport,
                 modelResult);
 
+        var guardedReport =
+            _guardrail.Apply(
+                report,
+                claims);
+
         _logger.LogInformation(
-            "Distilled AI investigation completed using {Provider}/{Model}. Input tokens: {InputTokens}. Output tokens: {OutputTokens}. Duration: {DurationMs} ms.",
+            "Distilled AI investigation completed using {Provider}/{Model}. " +
+            "Input tokens: {InputTokens}. Output tokens: {OutputTokens}. " +
+            "Duration: {DurationMs} ms.",
             response.ProviderName,
             response.ModelName,
             response.InputTokenCount,
             response.OutputTokenCount,
             response.Duration.TotalMilliseconds);
 
-        return report;
+        return guardedReport;
     }
 
     private static ModelRequest BuildModelRequest(
-        InvestigationReport baseline,
-        DistilledEvidence evidence,
-        IReadOnlyDictionary<string, string> metadata)
+    InvestigationReport baseline,
+    AuthorityAwareEvidence evidence,
+    IReadOnlyDictionary<string, string> metadata)
     {
         return new ModelRequest
         {
@@ -130,89 +165,144 @@ public sealed class ModelDecisionEngine
                     evidence),
 
             ResponseSchema =
-                InvestigationModelSchema.JsonSchema,
+                string.Empty,
 
             Metadata =
                 metadata
         };
     }
 
+    //private static string BuildSystemPrompt()
+    //{
+    //    return
+    //        """
+    //    You are a senior Production Support Engineer.
+
+    //    You will receive three categories of information:
+
+    //    CONFIRMED EVIDENCE
+    //    These are authoritative observations and explicit identifiers.
+
+    //    CANDIDATE CONTEXT
+    //    These are weak, fuzzy, inferred, or knowledge-based matches.
+    //    They are NOT facts.
+
+    //    UNKNOWNS
+    //    These are facts that have not been established.
+
+    //    Critical reasoning rules:
+
+    //    - Base conclusions primarily on CONFIRMED EVIDENCE.
+    //    - Never promote CANDIDATE CONTEXT into a fact without
+    //      independent confirmed evidence.
+    //    - Never combine unrelated facts into an unsupported relationship.
+    //    - If a database object and a database name are separately present,
+    //      do not claim that the object belongs to that database unless the
+    //      relationship itself is confirmed.
+    //    - If a threshold was reached, that proves only that the threshold
+    //      was reached. It does not prove the configured threshold is too low.
+    //    - A timeout does not by itself prove that increasing the timeout is
+    //      the correct fix.
+    //    - SQL error -2 indicates an execution timeout, not necessarily a
+    //      connection failure.
+    //    - Distinguish observed fact from hypothesis.
+    //    - Prefer Unknown over fabrication.
+    //    - Investigation steps must gather evidence that proves or disproves
+    //      the hypotheses.
+    //    - Recommendations must remain conditional unless the root cause is
+    //      confirmed.
+    //    - Return only valid JSON.
+    //    """;
+    //}
+
     private static string BuildSystemPrompt()
     {
         return
             """
-            You are a senior Production Support Engineer.
+        You are a senior Production Support Engineer.
 
-            Use only the supplied incident facts.
+        You will receive confirmed evidence, candidate context,
+        and explicit unknowns.
 
-            Rules:
-            - Facts are authoritative.
-            - Separate fact from hypothesis.
-            - Never invent missing application, source-code, API, database, or infrastructure details.
-            - Rank hypotheses by evidence strength.
-            - State uncertainty explicitly.
-            - Investigation steps must prove or disprove hypotheses.
-            - Do not recommend increasing a timeout merely because a timeout occurred.
-            - Keep recommendations operational and concise.
-            - Return only valid JSON matching the supplied schema.
-            """;
+        Rules:
+
+        - Base conclusions on confirmed evidence.
+        - Candidate context is not fact.
+        - Never invent relationships between separately observed facts.
+        - SQL error number -2 indicates an execution timeout.
+        - SQL error number -2 alone does not establish database connection instability.
+        - A command reaching its timeout proves that the execution threshold
+          was reached; it does not prove the timeout value is too low.
+        - For execution timeouts, investigate the operation itself first:
+          execution duration, blocking, waits, execution plan, resource pressure,
+          parameter behavior, and downstream/database responsiveness.
+        - Do not recommend increasing a timeout until the reason for slow
+          execution has been investigated.
+        - Separate observed facts from hypotheses.
+        - Prefer Unknown over unsupported conclusions.
+        - Recommendations must remain conditional unless the root cause is confirmed.
+        - Return only valid JSON.
+        """;
     }
 
     private static string BuildUserPrompt(
     InvestigationReport baseline,
-    DistilledEvidence evidence)
+    AuthorityAwareEvidence evidence)
     {
         return
             $$"""
-        Incident: {{baseline.IncidentId}}
-        Application: {{baseline.ApplicationName}}
+        Incident ID: {{baseline.IncidentId}}
 
-        Facts:
         {{evidence.ToPromptText()}}
 
-        Analyze only these facts.
+        Analyze the incident using confirmed evidence first.
 
-        Return ONLY JSON in exactly this shape:
+        Return ONLY JSON:
 
         {
-          "executiveSummary": "brief summary",
+          "executiveSummary": "brief evidence-grounded summary",
           "nextAction": {
-            "action": "first thing to investigate",
-            "why": "brief reason",
+            "action": "best first investigation action",
+            "why": "why this should be checked first",
             "confidenceScore": 0
           },
           "rootCauses": [
-            {
+                {
               "cause": "hypothesis",
-              "evidence": "supporting fact",
+              "evidence": [
+                "confirmed evidence supporting it"
+              ],
               "confidenceScore": 0
             }
           ],
           "investigationSteps": [
             {
               "sequence": 1,
-              "action": "check",
-              "expected": "what it proves"
+              "action": "investigation action",
+              "expected": "what evidence this will confirm or eliminate"
             }
           ],
           "resolutionRecommendations": [
             {
-              "recommendation": "fix direction",
-              "condition": "when this applies"
+              "recommendation": "conditional fix direction",
+              "condition": "evidence required before applying it"
             }
           ],
           "overallConfidenceScore": 0,
-          "unknowns": ["missing evidence"]
+          "unknowns": ["important missing evidence"]
         }
 
-        Maximum:
-        2 rootCauses
-        3 investigationSteps
-        2 resolutionRecommendations
-        4 unknowns
-
-        Keep every string under 120 characters.
-        Complete and close the JSON object.
+        Requirements:
+        - Maximum 2 root causes.
+        - Maximum 3 investigation steps.
+        - Maximum 2 recommendations.
+        - Maximum 5 unknowns.
+        - Every string must be concise.
+        - Do not identify an application or workflow from candidate context.
+        - Do not claim a database/object relationship unless confirmed.
+        - Do not recommend increasing a timeout solely because a timeout occurred.
+        - Complete and close the JSON object.
+        - rootCauses[].evidence MUST always be a JSON array of strings.
         """;
     }
 
@@ -356,13 +446,26 @@ public sealed class ModelDecisionEngine
     private static RootCauseHypothesis MapRootCause(
     ModelRootCause model)
     {
+        var evidence =
+            model.Evidence
+                .Where(value =>
+                    !string.IsNullOrWhiteSpace(value))
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .Take(5)
+                .ToArray();
+
         return new RootCauseHypothesis
         {
             Title =
                 model.Cause,
 
             Explanation =
-                model.Evidence,
+                evidence.Length == 0
+                    ? "This hypothesis requires additional evidence."
+                    : string.Join(
+                        " ",
+                        evidence),
 
             ConfidenceScore =
                 Math.Clamp(
@@ -371,10 +474,7 @@ public sealed class ModelDecisionEngine
                     100),
 
             SupportingEvidence =
-                string.IsNullOrWhiteSpace(
-                    model.Evidence)
-                    ? []
-                    : [model.Evidence],
+                evidence,
 
             ContradictingEvidence =
                 []

@@ -19,7 +19,9 @@ internal sealed class DistilledEvidence
             Environment.NewLine,
             Facts.Select(
                 fact =>
-                    $"- [{fact.Category}] {fact.Label}: {fact.Value}"));
+                    $"- [{fact.Authority}] [{fact.Category}] " +
+                    $"{fact.Label}: {fact.Value} " +
+                    $"(source: {fact.Source})"));
     }
 }
 
@@ -35,4 +37,10 @@ internal sealed class EvidenceFact
         string.Empty;
 
     public int Priority { get; init; }
+
+    public EvidenceAuthority Authority { get; init; } =
+        EvidenceAuthority.Unknown;
+
+    public string Source { get; init; } =
+        string.Empty;
 }

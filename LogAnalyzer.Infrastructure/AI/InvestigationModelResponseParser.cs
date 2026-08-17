@@ -5,10 +5,22 @@ namespace LogAnalyzer.Infrastructure.AI;
 internal sealed class InvestigationModelResponseParser
 {
     private static readonly JsonSerializerOptions JsonOptions =
-        new()
-        {
-            PropertyNameCaseInsensitive = true
-        };
+    CreateJsonOptions();
+
+    private static JsonSerializerOptions CreateJsonOptions()
+    {
+        var options =
+            new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive =
+                    true
+            };
+
+        options.Converters.Add(
+            new StringOrArrayJsonConverter());
+
+        return options;
+    }
 
     public bool TryParse(
         string content,

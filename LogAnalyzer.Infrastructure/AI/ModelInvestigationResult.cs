@@ -53,8 +53,11 @@ internal sealed class ModelRootCause
     public string Cause { get; init; } =
         string.Empty;
 
-    public string Evidence { get; init; } =
-        string.Empty;
+    public IReadOnlyCollection<string> Evidence
+    {
+        get;
+        init;
+    } = [];
 
     public int ConfidenceScore { get; init; }
 }

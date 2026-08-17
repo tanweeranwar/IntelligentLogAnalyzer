@@ -20,11 +20,11 @@ internal sealed partial class InvestigationEvidenceDistiller
             facts,
             package);
 
-        AddKnownLabels(
+        AddKnownLogLabels(
             facts,
             package.InvestigationContext);
 
-        AddSectionFacts(
+        AddKnowledgeSections(
             facts,
             package.InvestigationContext);
 
@@ -55,7 +55,10 @@ internal sealed partial class InvestigationEvidenceDistiller
                         fact.Value))
                 .GroupBy(
                     fact =>
-                        $"{fact.Category}|{fact.Label}|{fact.Value}",
+                        $"{fact.Authority}|" +
+                        $"{fact.Category}|" +
+                        $"{fact.Label}|" +
+                        $"{fact.Value}",
                     StringComparer.OrdinalIgnoreCase)
                 .Select(group =>
                     group
@@ -63,10 +66,10 @@ internal sealed partial class InvestigationEvidenceDistiller
                             fact.Priority)
                         .First())
                 .OrderByDescending(fact =>
+                    GetAuthorityOrder(
+                        fact.Authority))
+                .ThenByDescending(fact =>
                     fact.Priority)
-                .ThenBy(fact =>
-                    fact.Category,
-                    StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumFacts)
                 .ToArray();
 
@@ -81,29 +84,19 @@ internal sealed partial class InvestigationEvidenceDistiller
         ICollection<EvidenceFact> facts,
         ReasoningPackage package)
     {
+        /*
+         * Deterministic platform metadata.
+         */
+
         AddMetadataFact(
             facts,
             package,
             "IncidentId",
             "Incident",
             "Incident ID",
-            100);
-
-        AddMetadataFact(
-            facts,
-            package,
-            "Application",
-            "Identity",
-            "Application",
-            95);
-
-        AddMetadataFact(
-            facts,
-            package,
-            "Environment",
-            "Identity",
-            "Environment",
-            95);
+            100,
+            EvidenceAuthority.ExplicitIdentifier,
+            "Investigation platform");
 
         AddMetadataFact(
             facts,
@@ -111,7 +104,9 @@ internal sealed partial class InvestigationEvidenceDistiller
             "EvidenceCount",
             "Scope",
             "Evidence count",
-            80);
+            80,
+            EvidenceAuthority.ExplicitIdentifier,
+            "Investigation platform");
 
         AddMetadataFact(
             facts,
@@ -119,15 +114,50 @@ internal sealed partial class InvestigationEvidenceDistiller
             "ErrorPatternCount",
             "Scope",
             "Error pattern count",
-            80);
+            80,
+            EvidenceAuthority.ExplicitIdentifier,
+            "Investigation platform");
+
+        /*
+         * Application metadata may come from the context resolver.
+         * Do not promote it into a confirmed identity here.
+         */
+
+        AddMetadataFact(
+            facts,
+            package,
+            "Application",
+            "Application",
+            "Application candidate",
+            60,
+            EvidenceAuthority.FuzzyContext,
+            "Application context resolver");
 
         AddMetadataFact(
             facts,
             package,
             "ContextConfidence",
-            "Context",
+            "Application",
             "Context confidence",
-            70);
+            50,
+            EvidenceAuthority.FuzzyContext,
+            "Application context resolver");
+
+        /*
+         * Environment can be user/request supplied, but until we carry
+         * explicit provenance from InvestigationRequest it remains
+         * supporting context rather than raw-log evidence.
+         */
+
+        AddMetadataFact(
+            facts,
+            package,
+            "Environment",
+            "Environment",
+            "Environment",
+            60,
+            EvidenceAuthority.KnowledgeMatch,
+            "Investigation request");
     }
 
     private static void AddMetadataFact(
@@ -136,7 +166,9 @@ internal sealed partial class InvestigationEvidenceDistiller
         string key,
         string category,
         string label,
-        int priority)
+        int priority,
+        EvidenceAuthority authority,
+        string source)
     {
         if (!package.Metadata.TryGetValue(
                 key,
@@ -155,10 +187,12 @@ internal sealed partial class InvestigationEvidenceDistiller
                 category,
                 label,
                 value,
-                priority));
+                priority,
+                authority,
+                source));
     }
 
-    private static void AddKnownLabels(
+    private static void AddKnownLogLabels(
         ICollection<EvidenceFact> facts,
         string content)
     {
@@ -184,14 +218,14 @@ internal sealed partial class InvestigationEvidenceDistiller
             "Occurrence Count:",
             "Scope",
             "Occurrences",
-            95);
+            90);
 
         AddLabel(
             facts,
             content,
             "API Path:",
-            "Application",
-            "API",
+            "Request",
+            "API path",
             90);
 
         AddLabel(
@@ -200,7 +234,7 @@ internal sealed partial class InvestigationEvidenceDistiller
             "Server:",
             "Infrastructure",
             "Server",
-            85);
+            90);
 
         AddLabel(
             facts,
@@ -216,7 +250,7 @@ internal sealed partial class InvestigationEvidenceDistiller
             "Timestamp:",
             "Timeline",
             "Timestamp",
-            75);
+            80);
     }
 
     private static void AddLabel(
@@ -238,7 +272,8 @@ internal sealed partial class InvestigationEvidenceDistiller
                         prefix,
                         StringComparison.OrdinalIgnoreCase))
                 .Select(line =>
-                    line[prefix.Length..].Trim())
+                    line[prefix.Length..]
+                        .Trim())
                 .Where(value =>
                     !IsIgnoredValue(value))
                 .Distinct(
@@ -252,11 +287,13 @@ internal sealed partial class InvestigationEvidenceDistiller
                     category,
                     label,
                     value,
-                    priority));
+                    priority,
+                    EvidenceAuthority.RawLog,
+                    "Incident log"));
         }
     }
 
-    private static void AddSectionFacts(
+    private static void AddKnowledgeSections(
         ICollection<EvidenceFact> facts,
         string content)
     {
@@ -265,32 +302,40 @@ internal sealed partial class InvestigationEvidenceDistiller
             content,
             "Matched Components:",
             "Application",
-            "Component",
-            85);
+            "Component candidate",
+            60,
+            EvidenceAuthority.FuzzyContext,
+            "Application context resolver");
 
         AddBulletSection(
             facts,
             content,
             "Matched Workflows:",
             "Application",
-            "Workflow",
-            90);
+            "Workflow candidate",
+            60,
+            EvidenceAuthority.FuzzyContext,
+            "Application context resolver");
 
         AddBulletSection(
             facts,
             content,
             "Dependencies:",
             "Dependency",
-            "Dependency",
-            85);
+            "Dependency candidate",
+            55,
+            EvidenceAuthority.FuzzyContext,
+            "Application knowledge");
 
         AddBulletSection(
             facts,
             content,
             "Database Objects:",
             "Database",
-            "Database object",
-            90);
+            "Database object candidate",
+            65,
+            EvidenceAuthority.KnowledgeMatch,
+            "Application knowledge");
 
         AddBulletSection(
             facts,
@@ -298,7 +343,9 @@ internal sealed partial class InvestigationEvidenceDistiller
             "Matched Known Issues:",
             "Knowledge",
             "Known issue",
-            75);
+            65,
+            EvidenceAuthority.KnowledgeMatch,
+            "Application knowledge");
 
         AddBulletSection(
             facts,
@@ -306,7 +353,9 @@ internal sealed partial class InvestigationEvidenceDistiller
             "Investigation Hints:",
             "Knowledge",
             "Investigation hint",
-            65);
+            50,
+            EvidenceAuthority.KnowledgeMatch,
+            "Application knowledge");
     }
 
     private static void AddBulletSection(
@@ -315,7 +364,9 @@ internal sealed partial class InvestigationEvidenceDistiller
         string header,
         string category,
         string label,
-        int priority)
+        int priority,
+        EvidenceAuthority authority,
+        string source)
     {
         var lines =
             content.Split(
@@ -363,7 +414,8 @@ internal sealed partial class InvestigationEvidenceDistiller
             }
 
             var value =
-                line[2..].Trim();
+                line[2..]
+                    .Trim();
 
             if (IsIgnoredValue(value))
             {
@@ -375,12 +427,9 @@ internal sealed partial class InvestigationEvidenceDistiller
                     category,
                     label,
                     value,
-                    priority));
-
-            if (facts.Count >= 100)
-            {
-                return;
-            }
+                    priority,
+                    authority,
+                    source));
         }
     }
 
@@ -405,7 +454,9 @@ internal sealed partial class InvestigationEvidenceDistiller
                     "Failure",
                     "Observed exception",
                     value,
-                    100));
+                    100,
+                    EvidenceAuthority.RawLog,
+                    "Incident log"));
         }
     }
 
@@ -421,7 +472,9 @@ internal sealed partial class InvestigationEvidenceDistiller
                     "Database",
                     "DbContext",
                     match.Groups["value"].Value,
-                    95));
+                    100,
+                    EvidenceAuthority.RawLog,
+                    "Incident log"));
         }
 
         foreach (Match match in
@@ -432,7 +485,9 @@ internal sealed partial class InvestigationEvidenceDistiller
                     "Database",
                     "Command timeout seconds",
                     match.Groups["value"].Value,
-                    100));
+                    100,
+                    EvidenceAuthority.RawLog,
+                    "Incident log"));
         }
 
         foreach (Match match in
@@ -443,7 +498,9 @@ internal sealed partial class InvestigationEvidenceDistiller
                     "Database",
                     "SQL error number",
                     match.Groups["value"].Value,
-                    100));
+                    100,
+                    EvidenceAuthority.RawLog,
+                    "Incident log"));
         }
 
         foreach (Match match in
@@ -463,7 +520,9 @@ internal sealed partial class InvestigationEvidenceDistiller
                     "Database",
                     "Database operation",
                     value,
-                    95));
+                    100,
+                    EvidenceAuthority.RawLog,
+                    "Incident log"));
         }
     }
 
@@ -476,7 +535,8 @@ internal sealed partial class InvestigationEvidenceDistiller
                 .Matches(content)
                 .Select(match =>
                     match.Groups["value"]
-                        .Value.Trim())
+                        .Value
+                        .Trim())
                 .Where(value =>
                     !string.IsNullOrWhiteSpace(value))
                 .Where(value =>
@@ -492,9 +552,11 @@ internal sealed partial class InvestigationEvidenceDistiller
             facts.Add(
                 CreateFact(
                     "Stack",
-                    "Frame",
+                    "Stack frame",
                     frame,
-                    85));
+                    90,
+                    EvidenceAuthority.RawLog,
+                    "Incident stack trace"));
         }
     }
 
@@ -508,9 +570,11 @@ internal sealed partial class InvestigationEvidenceDistiller
             facts.Add(
                 CreateFact(
                     "Timing",
-                    "Observed duration",
+                    "Observed database duration",
                     match.Groups["value"].Value,
-                    90));
+                    100,
+                    EvidenceAuthority.RawLog,
+                    "Incident log"));
         }
 
         if (content.Contains(
@@ -522,7 +586,9 @@ internal sealed partial class InvestigationEvidenceDistiller
                     "Failure",
                     "Failure pattern",
                     "Execution Timeout Expired",
-                    100));
+                    100,
+                    EvidenceAuthority.RawLog,
+                    "Incident log"));
         }
 
         if (content.Contains(
@@ -534,7 +600,9 @@ internal sealed partial class InvestigationEvidenceDistiller
                     "Failure",
                     "Failure pattern",
                     "The wait operation timed out",
-                    95));
+                    95,
+                    EvidenceAuthority.RawLog,
+                    "Incident log"));
         }
     }
 
@@ -568,7 +636,9 @@ internal sealed partial class InvestigationEvidenceDistiller
                     "Failure",
                     "Representative message",
                     message,
-                    90));
+                    95,
+                    EvidenceAuthority.RawLog,
+                    "Incident log"));
         }
     }
 
@@ -576,7 +646,9 @@ internal sealed partial class InvestigationEvidenceDistiller
         string category,
         string label,
         string value,
-        int priority)
+        int priority,
+        EvidenceAuthority authority,
+        string source)
     {
         return new EvidenceFact
         {
@@ -587,11 +659,32 @@ internal sealed partial class InvestigationEvidenceDistiller
                 label,
 
             Value =
-                Truncate(
-                    value),
+                Truncate(value),
 
             Priority =
-                priority
+                priority,
+
+            Authority =
+                authority,
+
+            Source =
+                source
+        };
+    }
+
+    private static int GetAuthorityOrder(
+        EvidenceAuthority authority)
+    {
+        return authority switch
+        {
+            EvidenceAuthority.RawLog => 100,
+            EvidenceAuthority.ExplicitIdentifier => 90,
+            EvidenceAuthority.OpenApiMatch => 80,
+            EvidenceAuthority.RepositoryMatch => 80,
+            EvidenceAuthority.ExactKnowledgeMatch => 70,
+            EvidenceAuthority.KnowledgeMatch => 50,
+            EvidenceAuthority.FuzzyContext => 20,
+            _ => 0
         };
     }
 
@@ -655,11 +748,9 @@ internal sealed partial class InvestigationEvidenceDistiller
                     StringComparison.Ordinal)
                 .Trim();
 
-        return normalized.Length <=
-               MaximumValueLength
+        return normalized.Length <= MaximumValueLength
             ? normalized
-            : normalized[..MaximumValueLength] +
-              "...";
+            : normalized[..MaximumValueLength] + "...";
     }
 
     [GeneratedRegex(
@@ -673,7 +764,7 @@ internal sealed partial class InvestigationEvidenceDistiller
     private static partial Regex DbContextRegex();
 
     [GeneratedRegex(
-        @"CommandTimeout\s*=\s*'?""?(?<value>\d+)",
+        @"CommandTimeout\s*=\s*['""]?(?<value>\d+)",
         RegexOptions.IgnoreCase)]
     private static partial Regex CommandTimeoutRegex();
 
