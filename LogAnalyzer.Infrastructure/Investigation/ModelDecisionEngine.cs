@@ -92,9 +92,12 @@ public sealed class ModelDecisionEngine
                 package.Metadata);
 
         _logger.LogInformation(
-            "Starting distilled AI investigation using provider {Provider}. Facts: {FactCount}. Prompt characters: {PromptLength}.",
+            "Starting hybrid AI investigation using provider { Provider}. " +
+            "Confirmed facts: {ConfirmedFacts}. Candidates: {Candidates}. " +
+            "Prompt characters: {PromptLength}.",
             _modelProvider.ProviderName,
-            evidence.Facts.Count,
+            authorityAwareEvidence.ConfirmedFacts.Count,
+            authorityAwareEvidence.CandidateContext.Count,
             request.UserPrompt.Length);
 
         var response =
@@ -219,29 +222,18 @@ public sealed class ModelDecisionEngine
     {
         return
             """
-        You are a senior Production Support Engineer.
+        You are a Production Support Engineer.
 
-        You will receive confirmed evidence, candidate context,
-        and explicit unknowns.
+        CONFIRMED evidence is authoritative.
+        CANDIDATE context is not fact.
+        Never invent relationships between facts.
+        Prefer Unknown over unsupported conclusions.
 
-        Rules:
+        SQL error -2 is an execution timeout.
+        It does not by itself prove connection instability.
+        Reaching a timeout does not prove the timeout value is too low.
 
-        - Base conclusions on confirmed evidence.
-        - Candidate context is not fact.
-        - Never invent relationships between separately observed facts.
-        - SQL error number -2 indicates an execution timeout.
-        - SQL error number -2 alone does not establish database connection instability.
-        - A command reaching its timeout proves that the execution threshold
-          was reached; it does not prove the timeout value is too low.
-        - For execution timeouts, investigate the operation itself first:
-          execution duration, blocking, waits, execution plan, resource pressure,
-          parameter behavior, and downstream/database responsiveness.
-        - Do not recommend increasing a timeout until the reason for slow
-          execution has been investigated.
-        - Separate observed facts from hypotheses.
-        - Prefer Unknown over unsupported conclusions.
-        - Recommendations must remain conditional unless the root cause is confirmed.
-        - Return only valid JSON.
+        Return only valid JSON.
         """;
     }
 
@@ -255,60 +247,36 @@ public sealed class ModelDecisionEngine
 
         {{evidence.ToPromptText()}}
 
-        Analyze the incident using confirmed evidence first.
+        Analyze only the confirmed evidence.
 
         Return ONLY JSON:
 
         {
-          "executiveSummary": "brief evidence-grounded summary",
-          "nextAction": {
-            "action": "best first investigation action",
-            "why": "why this should be checked first",
-            "confidenceScore": 0
-          },
-          "rootCauses": [
-                {
-              "cause": "hypothesis",
-              "evidence": [
-                "confirmed evidence supporting it"
-              ],
-              "confidenceScore": 0
-            }
-          ],
-          "investigationSteps": [
+          "summary": "brief evidence-grounded summary",
+          "hypotheses": [
             {
-              "sequence": 1,
-              "action": "investigation action",
-              "expected": "what evidence this will confirm or eliminate"
+              "cause": "root-cause hypothesis",
+              "evidence": ["confirmed supporting fact"],
+              "confidence": 0
             }
           ],
-          "resolutionRecommendations": [
-            {
-              "recommendation": "conditional fix direction",
-              "condition": "evidence required before applying it"
-            }
-          ],
-          "overallConfidenceScore": 0,
-          "unknowns": ["important missing evidence"]
+          "nextAction": "single best investigation action"
         }
 
         Requirements:
-        - Maximum 2 root causes.
-        - Maximum 3 investigation steps.
-        - Maximum 2 recommendations.
-        - Maximum 5 unknowns.
-        - Every string must be concise.
-        - Do not identify an application or workflow from candidate context.
-        - Do not claim a database/object relationship unless confirmed.
-        - Do not recommend increasing a timeout solely because a timeout occurred.
+        - Maximum 2 hypotheses.
+        - Confidence must be 0-100.
+        - Keep every string concise.
+        - Candidate context is not fact.
+        - Prefer Unknown over fabrication.
+        - Do not recommend increasing timeout just because a timeout occurred.
         - Complete and close the JSON object.
-        - rootCauses[].evidence MUST always be a JSON array of strings.
         """;
     }
 
     private static InvestigationReport MergeReports(
-        InvestigationReport baseline,
-        ModelInvestigationResult model)
+    InvestigationReport baseline,
+    ModelInvestigationResult model)
     {
         return new InvestigationReport
         {
@@ -322,9 +290,10 @@ public sealed class ModelDecisionEngine
                 baseline.Environment,
 
             ExecutiveSummary =
-                ValueOrFallback(
-                    model.ExecutiveSummary,
-                    baseline.ExecutiveSummary),
+                string.IsNullOrWhiteSpace(
+                    model.Summary)
+                    ? baseline.ExecutiveSummary
+                    : model.Summary.Trim(),
 
             NextAction =
                 MapNextAction(
@@ -344,22 +313,15 @@ public sealed class ModelDecisionEngine
                 baseline.AffectedComponents,
 
             RootCauses =
-                model.RootCauses.Count > 0
-                    ? model.RootCauses
-                        .Take(3)
+                model.Hypotheses.Count > 0
+                    ? model.Hypotheses
+                        .Take(2)
                         .Select(MapRootCause)
                         .ToArray()
                     : baseline.RootCauses,
 
             InvestigationSteps =
-                model.InvestigationSteps.Count > 0
-                    ? model.InvestigationSteps
-                        .OrderBy(step =>
-                            step.Sequence)
-                        .Take(5)
-                        .Select(MapInvestigationStep)
-                        .ToArray()
-                    : baseline.InvestigationSteps,
+                baseline.InvestigationSteps,
 
             SuggestedSqlQueries =
                 baseline.SuggestedSqlQueries,
@@ -374,28 +336,16 @@ public sealed class ModelDecisionEngine
                 baseline.BusinessImpact,
 
             ResolutionRecommendations =
-                model.ResolutionRecommendations.Count > 0
-                    ? model.ResolutionRecommendations
-                        .Take(3)
-                        .Select(MapResolutionRecommendation)
-                        .ToArray()
-                    : baseline.ResolutionRecommendations,
+                baseline.ResolutionRecommendations,
 
             EvidenceReferences =
                 baseline.EvidenceReferences,
 
             OverallConfidenceScore =
-                model.OverallConfidenceScore > 0
-                    ? Math.Clamp(
-                        model.OverallConfidenceScore,
-                        0,
-                        100)
-                    : baseline.OverallConfidenceScore,
+                baseline.OverallConfidenceScore,
 
             Unknowns =
-                model.Unknowns.Count > 0
-                    ? model.Unknowns
-                    : baseline.Unknowns,
+                baseline.Unknowns,
 
             Assumptions =
                 baseline.Assumptions,
@@ -406,11 +356,11 @@ public sealed class ModelDecisionEngine
     }
 
     private static NextRecommendedAction MapNextAction(
-    ModelNextAction model,
+    string nextAction,
     NextRecommendedAction fallback)
     {
         if (string.IsNullOrWhiteSpace(
-                model.Action))
+                nextAction))
         {
             return fallback;
         }
@@ -421,10 +371,10 @@ public sealed class ModelDecisionEngine
                 "Recommended next action",
 
             Action =
-                model.Action,
+                nextAction.Trim(),
 
             Reason =
-                model.Why,
+                "This action was selected from the strongest confirmed evidence.",
 
             ExpectedOutcome =
                 "Evidence that confirms or eliminates the leading hypothesis.",
@@ -436,10 +386,9 @@ public sealed class ModelDecisionEngine
                 fallback.EstimatedEffort,
 
             ConfidenceScore =
-                Math.Clamp(
-                    model.ConfidenceScore,
-                    0,
-                    100)
+                Math.Max(
+                    fallback.ConfidenceScore,
+                    80)
         };
     }
 
@@ -449,10 +398,11 @@ public sealed class ModelDecisionEngine
         var evidence =
             model.Evidence
                 .Where(value =>
-                    !string.IsNullOrWhiteSpace(value))
+                    !string.IsNullOrWhiteSpace(
+                        value))
                 .Distinct(
                     StringComparer.OrdinalIgnoreCase)
-                .Take(5)
+                .Take(4)
                 .ToArray();
 
         return new RootCauseHypothesis
@@ -462,14 +412,14 @@ public sealed class ModelDecisionEngine
 
             Explanation =
                 evidence.Length == 0
-                    ? "This hypothesis requires additional evidence."
+                    ? "Additional evidence is required to validate this hypothesis."
                     : string.Join(
                         " ",
                         evidence),
 
             ConfidenceScore =
                 Math.Clamp(
-                    model.ConfidenceScore,
+                    model.Confidence,
                     0,
                     100),
 
@@ -481,62 +431,62 @@ public sealed class ModelDecisionEngine
         };
     }
 
-    private static InvestigationStep MapInvestigationStep(
-    ModelInvestigationStep model)
-    {
-        return new InvestigationStep
-        {
-            Sequence =
-                model.Sequence,
+    //private static InvestigationStep MapInvestigationStep(
+    //ModelInvestigationStep model)
+    //{
+    //    return new InvestigationStep
+    //    {
+    //        Sequence =
+    //            model.Sequence,
 
-            Title =
-                $"Investigation step {model.Sequence}",
+    //        Title =
+    //            $"Investigation step {model.Sequence}",
 
-            Action =
-                model.Action,
+    //        Action =
+    //            model.Action,
 
-            Reason =
-                "Validate the current incident hypothesis using available evidence.",
+    //        Reason =
+    //            "Validate the current incident hypothesis using available evidence.",
 
-            ExpectedOutcome =
-                model.Expected,
+    //        ExpectedOutcome =
+    //            model.Expected,
 
-            Priority =
-                model.Sequence <= 2
-                    ? "High"
-                    : "Medium",
+    //        Priority =
+    //            model.Sequence <= 2
+    //                ? "High"
+    //                : "Medium",
 
-            ConfidenceScore =
-                80
-        };
-    }
+    //        ConfidenceScore =
+    //            80
+    //    };
+    //}
 
-    private static ResolutionRecommendation
-    MapResolutionRecommendation(
-        ModelResolutionRecommendation model)
-    {
-        return new ResolutionRecommendation
-        {
-            Title =
-                model.Recommendation,
+    //private static ResolutionRecommendation
+    //MapResolutionRecommendation(
+    //    ModelResolutionRecommendation model)
+    //{
+    //    return new ResolutionRecommendation
+    //    {
+    //        Title =
+    //            model.Recommendation,
 
-            Description =
-                string.IsNullOrWhiteSpace(
-                    model.Condition)
-                    ? model.Recommendation
-                    : $"{model.Recommendation} " +
-                      $"Condition: {model.Condition}",
+    //        Description =
+    //            string.IsNullOrWhiteSpace(
+    //                model.Condition)
+    //                ? model.Recommendation
+    //                : $"{model.Recommendation} " +
+    //                  $"Condition: {model.Condition}",
 
-            RecommendationType =
-                "Conditional",
+    //        RecommendationType =
+    //            "Conditional",
 
-            Risk =
-                "Validate the confirmed root cause before implementation.",
+    //        Risk =
+    //            "Validate the confirmed root cause before implementation.",
 
-            ConfidenceScore =
-                70
-        };
-    }
+    //        ConfidenceScore =
+    //            70
+    //    };
+    //}
 
     private static string NormalizePriority(
         string priority)

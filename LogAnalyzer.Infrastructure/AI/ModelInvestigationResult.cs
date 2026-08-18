@@ -2,50 +2,17 @@
 
 internal sealed class ModelInvestigationResult
 {
-    public string ExecutiveSummary { get; init; } =
+    public string Summary { get; init; } =
         string.Empty;
 
-    public ModelNextAction NextAction { get; init; } =
-        new();
-
-    public IReadOnlyCollection<ModelRootCause> RootCauses
+    public IReadOnlyCollection<ModelRootCause> Hypotheses
     {
         get;
         init;
     } = [];
 
-    public IReadOnlyCollection<ModelInvestigationStep>
-        InvestigationSteps
-    {
-        get;
-        init;
-    } = [];
-
-    public IReadOnlyCollection<ModelResolutionRecommendation>
-        ResolutionRecommendations
-    {
-        get;
-        init;
-    } = [];
-
-    public int OverallConfidenceScore { get; init; }
-
-    public IReadOnlyCollection<string> Unknowns
-    {
-        get;
-        init;
-    } = [];
-}
-
-internal sealed class ModelNextAction
-{
-    public string Action { get; init; } =
+    public string NextAction { get; init; } =
         string.Empty;
-
-    public string Why { get; init; } =
-        string.Empty;
-
-    public int ConfidenceScore { get; init; }
 }
 
 internal sealed class ModelRootCause
@@ -59,25 +26,5 @@ internal sealed class ModelRootCause
         init;
     } = [];
 
-    public int ConfidenceScore { get; init; }
-}
-
-internal sealed class ModelInvestigationStep
-{
-    public int Sequence { get; init; }
-
-    public string Action { get; init; } =
-        string.Empty;
-
-    public string Expected { get; init; } =
-        string.Empty;
-}
-
-internal sealed class ModelResolutionRecommendation
-{
-    public string Recommendation { get; init; } =
-        string.Empty;
-
-    public string Condition { get; init; } =
-        string.Empty;
+    public int Confidence { get; init; }
 }

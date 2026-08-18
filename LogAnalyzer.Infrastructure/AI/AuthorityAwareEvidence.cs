@@ -29,7 +29,7 @@ internal sealed class AuthorityAwareEvidence
                     Environment.NewLine,
                     ConfirmedFacts.Select(
                         claim =>
-                            $"- [{claim.Authority}] {claim.Label}: {claim.Value}"));
+                            $"- {claim.Label}: {claim.Value}"));
 
         var candidates =
             CandidateContext.Count == 0
@@ -38,8 +38,8 @@ internal sealed class AuthorityAwareEvidence
                     Environment.NewLine,
                     CandidateContext.Select(
                         claim =>
-                            $"- [{claim.ConfidenceScore}% / {claim.Authority}] " +
-                            $"{claim.Label}: {claim.Value}"));
+                            $"- {claim.Label}: {claim.Value} " +
+                            $"({claim.ConfidenceScore}% confidence)"));
 
         var unknowns =
             Unknowns.Count == 0

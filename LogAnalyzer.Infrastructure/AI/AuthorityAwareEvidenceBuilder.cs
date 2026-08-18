@@ -13,7 +13,7 @@ internal sealed class AuthorityAwareEvidenceBuilder
                     claim.IsConfirmed)
                 .OrderByDescending(claim =>
                     claim.ConfidenceScore)
-                .Take(18)
+                .Take(12)
                 .ToArray();
 
         var candidates =
@@ -26,7 +26,7 @@ internal sealed class AuthorityAwareEvidenceBuilder
                     EvidenceAuthority.FuzzyContext)
                 .OrderByDescending(claim =>
                     claim.ConfidenceScore)
-                .Take(8)
+                .Take(5)
                 .ToArray();
 
         return new AuthorityAwareEvidence

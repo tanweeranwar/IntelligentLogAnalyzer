@@ -79,9 +79,10 @@ internal sealed class InvestigationReportGuardrail
                     timeoutEvidence),
 
             InvestigationSteps =
-                GuardInvestigationSteps(
+                GuardIdentityReferences(
                     report.InvestigationSteps,
-                    timeoutEvidence),
+                    application,
+                    workflow),
 
             SuggestedSqlQueries =
                 GuardSqlQueries(
@@ -999,5 +1000,79 @@ internal sealed class InvestigationReportGuardrail
              evidenceScore) / 2,
             20,
             90);
+    }
+
+    private static IReadOnlyCollection<InvestigationStep>
+    GuardIdentityReferences(
+        IReadOnlyCollection<InvestigationStep> steps,
+        string application,
+        string workflow)
+    {
+        return steps
+            .Select(step =>
+            {
+                var action =
+                    step.Action;
+
+                if (workflow.Equals(
+                        "Unknown",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    action =
+                        RemoveUnconfirmedWorkflowReference(
+                            action);
+                }
+
+                return new InvestigationStep
+                {
+                    Sequence =
+                        step.Sequence,
+
+                    Title =
+                        step.Title,
+
+                    Action =
+                        action,
+
+                    Reason =
+                        step.Reason,
+
+                    ExpectedOutcome =
+                        step.ExpectedOutcome,
+
+                    Priority =
+                        step.Priority,
+
+                    ConfidenceScore =
+                        step.ConfidenceScore
+                };
+            })
+            .ToArray();
+    }
+
+    private static string RemoveUnconfirmedWorkflowReference(
+        string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        /*
+         * Do not attempt to guess the rejected workflow name here.
+         * Replace workflow-specific scope language with neutral language
+         * when authoritative workflow identity is unavailable.
+         */
+
+        if (value.Contains(
+                "determine whether all requests or only specific requests are affected",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return
+                "Validate whether the issue is still occurring and determine " +
+                "whether all requests or only specific requests are affected.";
+        }
+
+        return value;
     }
 }
