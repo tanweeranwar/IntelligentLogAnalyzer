@@ -1,16 +1,18 @@
+using LogAnalyzer.Application.AI;
 using LogAnalyzer.Application.Interfaces;
+using LogAnalyzer.ApplicationIntelligence.Extensions;
+using LogAnalyzer.Domain.RepositoryIntelligence;
+using LogAnalyzer.Infrastructure.AI;
+using LogAnalyzer.Infrastructure.Context;
 using LogAnalyzer.Infrastructure.Correlation;
 using LogAnalyzer.Infrastructure.EventBuilders;
+using LogAnalyzer.Infrastructure;
 using LogAnalyzer.Infrastructure.Health;
 using LogAnalyzer.Infrastructure.Intelligence;
-using LogAnalyzer.Infrastructure.Parsers;
-using LogAnalyzer.Web.Components;
-using LogAnalyzer.Infrastructure.Services;
-using LogAnalyzer.Infrastructure.Context;
 using LogAnalyzer.Infrastructure.Investigation;
-using LogAnalyzer.ApplicationIntelligence.Extensions;
-using LogAnalyzer.Application.AI;
-using LogAnalyzer.Infrastructure.AI;
+using LogAnalyzer.Infrastructure.Parsers;
+using LogAnalyzer.Infrastructure.Services;
+using LogAnalyzer.Web.Components;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -129,6 +131,8 @@ builder.Services.AddTransient<IModelProvider>(
                 ModelProviderResolver>()
             .Resolve());
 
+builder.Services.AddInfrastructure();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -149,5 +153,100 @@ app.MapStaticAssets();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+/* This is for testing */
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapGet(
+        "/dev/repository-source-scan",
+        async (
+            IRepositoryScanner scanner,
+            CancellationToken cancellationToken) =>
+        {
+            var rootPath =
+                Path.GetFullPath(
+                    Path.Combine(
+                        app.Environment.ContentRootPath,
+                        ".."));
+
+            var result =
+                await scanner.ScanAsync(
+                    new RepositoryScanRequest
+                    {
+                        Location =
+                            rootPath,
+
+                        RepositoryName =
+                            "IntelligentLogAnalyzer",
+
+                        Provider =
+                            "Local",
+
+                        IncludeTests =
+                            false,
+
+                        IncludeGeneratedFiles =
+                            false,
+
+                        MaximumFiles =
+                            5000
+                    },
+                    cancellationToken);
+
+            return Results.Ok(
+                new
+                {
+                    Repository =
+                        result.Repository.Name,
+
+                    RepositoryId =
+                        result.Repository.Id,
+
+                    Provider =
+                        result.Repository.Provider,
+
+                    ProjectCount =
+                        result.Projects.Count,
+
+                    SourceFileCount =
+                        result.Files.Count,
+
+                    TypeCount =
+                        result.Files
+                            .Sum(file =>
+                                file.Types.Count),
+
+                    MethodCount =
+                        result.Files
+                            .SelectMany(file =>
+                                file.Types)
+                            .Sum(type =>
+                                type.Methods.Count),
+
+                    DatabaseReferenceCount =
+                        result.DatabaseReferences.Count,
+
+                    DatabaseReferences =
+                        result.DatabaseReferences
+                            .Take(50)
+                            .Select(reference =>
+                                new
+                                {
+                                    reference.Operation,
+                                    reference.Project,
+                                    reference.FilePath,
+                                    reference.ClassName,
+                                    reference.MethodName,
+                                    reference.LineNumber,
+                                    reference.DatabaseType,
+                                    reference.DbContext
+                                })
+                            .ToArray()
+                });
+        });
+}
+
+//  The above shall be removed during prod release... 
 
 app.Run();
